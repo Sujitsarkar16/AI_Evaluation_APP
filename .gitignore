@@ -1,0 +1,40 @@
+# Ignore credentials and environment files
+.env
+.env.*
+*.env
+credentials.json
+api_keys.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+
+# JavaScript/Node
+node_modules/
+build/
+dist/
+npm-debug.log
+yarn-error.log
+yarn-debug.log
+
+# IDE/Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Database
+*.sqlite3
+*.db
+
+# Misc
+uploads/
+*.tmp
