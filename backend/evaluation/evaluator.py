@@ -156,7 +156,8 @@ def evaluate_qa_pairs(qa_pairs, totalMarks=100):
                 'questionText': question_text,
                 'score': 0,
                 'maxMarks': max_marks,
-                'rationale': "No answer provided."
+                'rationale': "No answer provided.",
+                'studentAnswer': answer
             })
             max_total_score += max_marks
             continue
@@ -246,11 +247,12 @@ def evaluate_qa_pairs(qa_pairs, totalMarks=100):
         1. Review all three evaluations
         2. Identify areas of agreement and disagreement
         3. Determine a final consensus grade that is generous toward the student
-        4. Provide a clear rationale for your assessment
+        4. Provide a clear rationale for your assessment directly related to the student's answer
+        5. Focus on what the student did well and what could be improved
         
         Format your response as:
         
-        ## Question {question_num}: {question_text}
+        ## Question {question_num}:
         
         **Score:** [X] out of {max_marks}
         
@@ -260,15 +262,15 @@ def evaluate_qa_pairs(qa_pairs, totalMarks=100):
         - Holistic: {holistic_score}/{max_marks}
         
         **Consensus Rationale:**
-        [your consensus rationale, be generous and supportive]
+        [your consensus rationale, be generous and supportive, directly addressing the student's answer]
         
         **Strengths:**
-        - [strength 1]
-        - [strength 2]
+        - [strength 1 directly from the student's answer]
+        - [strength 2 directly from the student's answer]
         
         **Improvement Opportunities:**
-        - [opportunity 1]
-        - [opportunity 2]
+        - [specific improvement 1 related to the student's answer]
+        - [specific improvement 2 related to the student's answer]
         """
         
         try:
@@ -294,6 +296,7 @@ def evaluate_qa_pairs(qa_pairs, totalMarks=100):
             evaluations.append({
                 'questionNumber': question_num,
                 'questionText': question_text,
+                'studentAnswer': answer,
                 'score': score,
                 'maxMarks': max_marks,
                 'rationale': rationale,
@@ -312,7 +315,8 @@ def evaluate_qa_pairs(qa_pairs, totalMarks=100):
                 'score': 0,
                 'maxMarks': max_marks,
                 'rationale': f"Error in evaluation: {str(e)}",
-                'evaluation': "Evaluation failed due to an error."
+                'evaluation': "Evaluation failed due to an error.",
+                'studentAnswer': answer
             })
     
     # Calculate overall percentage and grade
@@ -383,18 +387,36 @@ def generate_evaluation_report(evaluation_result):
     for eval_item in evaluations:
         q_num = eval_item.get('questionNumber', 0)
         q_text = eval_item.get('questionText', '')
+        student_answer = eval_item.get('studentAnswer', '')
         score = eval_item.get('score', 0)
         max_marks = eval_item.get('maxMarks', 0)
         rationale = eval_item.get('rationale', '')
         full_evaluation = eval_item.get('evaluation', '')
         
-        md += f"### Question {q_num}: {q_text}\n\n"
+        # Question text and number with marks
+        md += f"### Question {q_num}: {q_text} [{max_marks} marks]\n\n"
+        
+        # Student's answer - format based on content
+        md += "**Student's Answer:**\n\n"
+        
+        # If the answer is empty or "No answer provided"
+        if not student_answer or student_answer.strip() == "No answer provided":
+            md += "_No answer provided_\n\n"
+        # If the answer appears to be code, format it as code
+        elif any(marker in student_answer.lower() for marker in ['class ', 'int ', 'void ', 'function', 'def ', '#include']):
+            md += f"```cpp\n{student_answer}\n```\n\n"
+        # Otherwise, format it as regular text
+        else:
+            md += f"{student_answer}\n\n"
+        
+        # Score
         md += f"**Score:** {score}/{max_marks}\n\n"
         
         if full_evaluation:
             # Use the full consensus evaluation if available
-            # Remove the question header as we already added it
+            # Remove the question header and score as we already added it
             clean_eval = re.sub(r'^## Question \d+:.+?$', '', full_evaluation, flags=re.MULTILINE).strip()
+            clean_eval = re.sub(r'^\*\*Score:\*\*.*$', '', clean_eval, flags=re.MULTILINE).strip()
             md += f"{clean_eval}\n\n"
         else:
             # Fallback to simple rationale
