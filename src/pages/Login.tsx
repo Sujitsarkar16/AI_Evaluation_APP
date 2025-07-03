@@ -1,10 +1,11 @@
-
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/Button";
 import { Input } from "@/components/Input";
 import { useToast } from "@/hooks/use-toast";
 import { Brain, Eye, EyeOff } from "lucide-react";
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 const Login = () => {
   const { toast } = useToast();
@@ -21,20 +22,54 @@ const Login = () => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
   
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     
-    // Simulate authentication
-    setTimeout(() => {
-      toast({
-        title: "Login successful",
-        description: "Welcome back to EduAI!",
+    try {
+      // Try to authenticate with backend first
+      const response = await fetch(`${API_BASE_URL}/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: formData.email,
+          password: formData.password,
+        }),
       });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Store authentication data
+        localStorage.setItem('authToken', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        localStorage.setItem('userRole', data.user.role);
+        
+        toast({
+          title: "Login successful",
+          description: `Welcome back, ${data.user.username}!`,
+        });
+        
+        // Redirect to the dashboard
+        navigate("/dashboard");
+      } else {
+        toast({
+          title: "Login failed",
+          description: data.message || "Invalid credentials",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Login failed",
+        description: "Network error. Please check your connection and try again.",
+        variant: "destructive",
+      });
+    } finally {
       setIsLoading(false);
-      // Redirect to the dashboard
-      navigate("/dashboard");
-    }, 1500);
+    }
   };
   
   return (
@@ -43,7 +78,7 @@ const Login = () => {
         <div className="text-center mb-10">
           <Link to="/" className="inline-flex items-center">
             <Brain className="h-10 w-10 text-accent mr-2" />
-            <span className="text-2xl font-bold">EduAI</span>
+                          <span className="text-2xl font-bold">Autograder AI</span>
           </Link>
           <h2 className="mt-6 text-3xl font-bold">Sign in to your account</h2>
           <p className="mt-2 text-muted-foreground">
@@ -89,7 +124,7 @@ const Login = () => {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-500"
+                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-600 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
                 >
                   {showPassword ? (
                     <EyeOff className="h-5 w-5" />
@@ -123,6 +158,8 @@ const Login = () => {
               )}
             </Button>
           </form>
+          
+
           
           <div className="mt-6">
             <div className="relative">
@@ -158,25 +195,21 @@ const Login = () => {
                 Google
               </Button>
               <Button variant="outline" className="w-full">
-                <svg className="h-5 w-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                  <path
-                    fillRule="evenodd"
-                    d="M10 0C4.477 0 0 4.477 0 10c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.87 1.52 2.34 1.07 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02.79-.22 1.65-.33 2.5-.33.85 0 1.71.11 2.5.33 1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V19c0 .27.16.59.67.5C17.14 18.16 20 14.42 20 10A10 10 0 0010 0z"
-                    clipRule="evenodd"
-                  />
+                <svg className="h-5 w-5 mr-2" viewBox="0 0 24 24">
+                  <path fill="#1877F2" d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
                 </svg>
-                GitHub
+                Facebook
               </Button>
             </div>
           </div>
+          
+          <p className="mt-6 text-center text-sm text-muted-foreground">
+            Don't have an account?{" "}
+            <Link to="/signup" className="text-accent hover:text-accent/80 font-medium transition-colors">
+              Sign up for free
+            </Link>
+          </p>
         </div>
-        
-        <p className="mt-8 text-center text-sm text-muted-foreground">
-          Don't have an account?{" "}
-          <Link to="/signup" className="font-medium text-accent hover:text-accent/80 transition-colors">
-            Sign up for free
-          </Link>
-        </p>
       </div>
     </div>
   );

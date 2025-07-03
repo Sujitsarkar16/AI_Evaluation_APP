@@ -9,9 +9,9 @@ const About = () => {
         <div className="absolute inset-0 bg-gradient-to-br from-accent/5 to-accent/10 z-0"></div>
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <div className="max-w-3xl mx-auto text-center">
-            <h1 className="text-4xl md:text-5xl font-bold mb-6 animate-fade-in">About EduAI</h1>
-            <p className="text-xl text-muted-foreground mb-10 animate-fade-in" style={{ animationDelay: "0.2s" }}>
-              We're on a mission to transform education through artificial intelligence, making learning more accessible, personalized, and effective for everyone.
+            <h1 className="text-4xl md:text-5xl font-bold mb-6 animate-fade-in">About Autograder AI</h1>
+            <p className="text-xl text-gray-700 dark:text-gray-300 mb-10 animate-fade-in" style={{ animationDelay: "0.2s" }}>
+              We're on a mission to transform assessment through artificial intelligence, making grading more accurate, efficient, and insightful for educators.
             </p>
           </div>
         </div>
@@ -35,14 +35,14 @@ const About = () => {
             </div>
             <div className="order-1 md:order-2 animate-slide-in-up" style={{ animationDelay: "0.2s" }}>
               <h2 className="text-3xl font-bold mb-6">Our Story</h2>
-              <p className="text-lg text-muted-foreground mb-4">
-                Founded in 2022 by a team of educators, technologists, and AI researchers, EduAI was born from a shared vision: to harness the power of artificial intelligence to overcome the limitations of traditional education.
+              <p className="text-lg text-gray-700 dark:text-gray-300 mb-4">
+                Founded in 2022 by a team of educators, technologists, and AI researchers, Autograder AI was born from a shared vision: to harness the power of artificial intelligence to overcome the limitations of traditional assessment and grading.
               </p>
-              <p className="text-lg text-muted-foreground mb-4">
-                We recognized that despite advances in educational technology, most platforms still followed a one-size-fits-all approach that failed to address the unique needs of each learner.
+              <p className="text-lg text-gray-700 dark:text-gray-300 mb-4">
+                We recognized that despite advances in educational technology, grading and assessment remained time-consuming, inconsistent, and often failed to provide meaningful feedback to students.
               </p>
-              <p className="text-lg text-muted-foreground">
-                After two years of intense research and development, we launched EduAI with our proprietary adaptive learning algorithm that personalizes content delivery, pace, and assessment for each individual student.
+              <p className="text-lg text-gray-700 dark:text-gray-300">
+                After two years of intense research and development, we launched Autograder AI with our proprietary AI evaluation algorithm that automates grading, provides detailed feedback, and ensures consistent assessment across all submissions.
               </p>
             </div>
           </div>
@@ -55,27 +55,27 @@ const About = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-16">
             <div className="animate-slide-in-up">
               <div className="bg-accent/10 p-3 rounded-lg w-fit mb-5">
-                <Lightbulb className="h-6 w-6 text-accent" />
+                <Lightbulb className="h-6 w-6 text-blue-600 dark:text-blue-400" />
               </div>
               <h2 className="text-3xl font-bold mb-6">Our Mission</h2>
-              <p className="text-lg text-muted-foreground mb-4">
-                To democratize quality education by creating an AI-powered learning platform that adapts to each student's unique needs, learning style, and pace.
+              <p className="text-lg text-gray-700 dark:text-gray-300 mb-4">
+                To democratize quality assessment by creating an AI-powered autograding platform that provides consistent, detailed, and timely feedback for every student submission.
               </p>
-              <p className="text-lg text-muted-foreground">
-                We believe that personalized education should be accessible to everyone, regardless of background, location, or resources. Our platform is designed to break down barriers and create opportunities for lifelong learning.
+              <p className="text-lg text-gray-700 dark:text-gray-300">
+                We believe that effective assessment should be accessible to all educators, regardless of class size, resources, or time constraints. Our platform is designed to break down barriers and create opportunities for meaningful evaluation.
               </p>
             </div>
             
             <div className="animate-slide-in-up" style={{ animationDelay: "0.2s" }}>
               <div className="bg-accent/10 p-3 rounded-lg w-fit mb-5">
-                <Rocket className="h-6 w-6 text-accent" />
+                <Rocket className="h-6 w-6 text-blue-600 dark:text-blue-400" />
               </div>
               <h2 className="text-3xl font-bold mb-6">Our Vision</h2>
-              <p className="text-lg text-muted-foreground mb-4">
-                A world where AI-enhanced education enables everyone to reach their full potential by learning in ways that are optimized for their individual strengths and preferences.
+              <p className="text-lg text-gray-700 dark:text-gray-300 mb-4">
+                A world where AI-enhanced assessment enables every educator to provide timely, detailed, and constructive feedback that helps students reach their full potential.
               </p>
-              <p className="text-lg text-muted-foreground">
-                We envision a future where education is truly personalized, where learning is engaging and effective, and where technology serves as a bridge between students and knowledge rather than a barrier.
+              <p className="text-lg text-gray-700 dark:text-gray-300">
+                We envision a future where grading is truly intelligent, where feedback is meaningful and actionable, and where technology serves as a bridge between educators and effective assessment rather than a burden.
               </p>
             </div>
           </div>
@@ -87,7 +87,7 @@ const About = () => {
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="max-w-3xl mx-auto text-center mb-16">
             <h2 className="text-3xl md:text-4xl font-bold mb-6">Our Values</h2>
-            <p className="text-lg text-muted-foreground">
+            <p className="text-lg text-gray-700 dark:text-gray-300">
               These core principles guide everything we do, from product development to customer support.
             </p>
           </div>
@@ -95,34 +95,34 @@ const About = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {[
               {
-                icon: <Brain className="h-8 w-8 text-accent" />,
+                icon: <Brain className="h-8 w-8 text-blue-600 dark:text-blue-400" />,
                 title: "Innovation",
-                description: "We continuously push the boundaries of what's possible in educational technology, leveraging cutting-edge AI research to improve our platform."
+                description: "We continuously push the boundaries of what's possible in assessment technology, leveraging cutting-edge AI research to improve our autograding platform."
               },
               {
-                icon: <Users className="h-8 w-8 text-accent" />,
+                icon: <Users className="h-8 w-8 text-blue-600 dark:text-blue-400" />,
                 title: "Inclusivity",
-                description: "We design for diversity, ensuring our platform is accessible and effective for learners of all backgrounds, abilities, and learning preferences."
+                description: "We design for diversity, ensuring our platform is accessible and effective for educators and students of all backgrounds, subjects, and assessment needs."
               },
               {
-                icon: <Award className="h-8 w-8 text-accent" />,
+                icon: <Award className="h-8 w-8 text-blue-600 dark:text-blue-400" />,
                 title: "Excellence",
                 description: "We hold ourselves to the highest standards in everything we do, from the quality of our content to the reliability of our technology."
               },
               {
-                icon: <Cpu className="h-8 w-8 text-accent" />,
+                icon: <Cpu className="h-8 w-8 text-blue-600 dark:text-blue-400" />,
                 title: "Ethics",
                 description: "We are committed to the responsible use of AI, ensuring privacy, transparency, and fairness in all our algorithms and data practices."
               },
               {
-                icon: <Lightbulb className="h-8 w-8 text-accent" />,
+                icon: <Lightbulb className="h-8 w-8 text-blue-600 dark:text-blue-400" />,
                 title: "Empowerment",
-                description: "We believe in giving learners and educators the tools and insights they need to take control of their educational journey."
+                description: "We believe in giving educators the tools and insights they need to take control of their assessment and grading processes."
               },
               {
-                icon: <Users className="h-8 w-8 text-accent" />,
+                icon: <Users className="h-8 w-8 text-blue-600 dark:text-blue-400" />,
                 title: "Collaboration",
-                description: "We foster partnerships with educators, institutions, and researchers to continually improve our understanding of effective learning."
+                description: "We foster partnerships with educators, institutions, and researchers to continually improve our understanding of effective assessment and feedback."
               }
             ].map((value, index) => (
               <div 
@@ -134,7 +134,7 @@ const About = () => {
                   {value.icon}
                 </div>
                 <h3 className="text-xl font-semibold mb-3">{value.title}</h3>
-                <p className="text-muted-foreground">{value.description}</p>
+                <p className="text-gray-700 dark:text-gray-300">{value.description}</p>
               </div>
             ))}
           </div>
@@ -146,36 +146,30 @@ const About = () => {
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="max-w-3xl mx-auto text-center mb-16">
             <h2 className="text-3xl md:text-4xl font-bold mb-6">Our Leadership Team</h2>
-            <p className="text-lg text-muted-foreground">
-              Meet the passionate experts leading our mission to transform education through AI.
+            <p className="text-lg text-gray-700 dark:text-gray-300">
+              Meet the passionate experts leading our mission to transform assessment and grading through AI.
             </p>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {[
               {
-                name: "Dr. Maya Patel",
-                role: "Co-Founder & CEO",
-                image: "https://placehold.co/300x300/2563eb/FFFFFF/png?text=MP&font=montserrat",
+                name: "Dr. Neha Sharma",
+                role: "Founder & CEO",
+                image: "https://placehold.co/300x300/2563eb/FFFFFF/png?text=NS&font=montserrat",
                 delay: "0.1s"
               },
               {
-                name: "Alex Chen",
+                name: "Mrityunjoy Pandey",
                 role: "Co-Founder & CTO",
-                image: "https://placehold.co/300x300/2563eb/FFFFFF/png?text=AC&font=montserrat",
+                image: "https://placehold.co/300x300/2563eb/FFFFFF/png?text=MP&font=montserrat",
                 delay: "0.2s"
               },
               {
-                name: "Sarah Johnson",
-                role: "Chief Learning Officer",
-                image: "https://placehold.co/300x300/2563eb/FFFFFF/png?text=SJ&font=montserrat",
+                name: "Sujit Sarkar",
+                role: "Co-Founder & COO",
+                image: "https://placehold.co/300x300/2563eb/FFFFFF/png?text=SS&font=montserrat",
                 delay: "0.3s"
-              },
-              {
-                name: "David Kim",
-                role: "Chief Product Officer",
-                image: "https://placehold.co/300x300/2563eb/FFFFFF/png?text=DK&font=montserrat",
-                delay: "0.4s"
               }
             ].map((member, index) => (
               <div 
@@ -194,7 +188,7 @@ const About = () => {
                   </div>
                 </div>
                 <h3 className="text-xl font-semibold mb-1">{member.name}</h3>
-                <p className="text-muted-foreground">{member.role}</p>
+                <p className="text-gray-700 dark:text-gray-300">{member.role}</p>
               </div>
             ))}
           </div>

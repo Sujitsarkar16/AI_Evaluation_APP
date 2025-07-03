@@ -10,6 +10,8 @@ import json
 import time
 import google.generativeai as genai
 from dotenv import load_dotenv
+from tenacity import retry, stop_after_attempt, wait_fixed, RetryError
+from prompts import MAPPING_PROMPT
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -20,6 +22,24 @@ model = None
 
 # Load environment variables
 load_dotenv()
+
+# Configure Gemini API
+try:
+    api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise ValueError("No Gemini API key found. Set GOOGLE_API_KEY or GEMINI_API_KEY environment variable.")
+    genai.configure(api_key=api_key)
+    MODEL_NAME = 'gemini-2.5-flash-preview-04-17'
+    model = genai.GenerativeModel(model_name=MODEL_NAME)
+    logger.info(f"Successfully initialized Gemini model for mapping: {MODEL_NAME}")
+except Exception as e:
+    logger.error(f"Error configuring Gemini API for mapping: {e}")
+    model = None
+
+# Global counters for tracking usage
+total_input_tokens = 0
+total_output_tokens = 0
+total_api_requests = 0
 
 def get_gemini_model():
     """Initialize and return the Gemini model."""
@@ -39,7 +59,7 @@ def get_gemini_model():
         genai.configure(api_key=api_key)
         
         # Use the specified model name
-        gemini_model_name = "gemini-2.0-flash-thinking-exp-01-21"
+        gemini_model_name = "gemini-2.5-flash-preview-04-17"
         
         # Initialize the model
         model = genai.GenerativeModel(gemini_model_name)
@@ -106,145 +126,145 @@ def extract_json_from_text(text):
         logger.error(f"Error extracting JSON: {e}")
         return None
 
-def map_questions_to_answers(text, predefined_questions=None):
+def generate_mapping_prompt(question_paper_json, answer_sheet_text):
+    """Constructs the prompt for Gemini to perform the mapping."""
+    return MAPPING_PROMPT.format(
+        question_paper_json=json.dumps(question_paper_json, indent=2),
+        answer_sheet_text=answer_sheet_text
+    )
+
+@retry(stop=stop_after_attempt(3), wait=wait_fixed(1), reraise=True)
+def make_gemini_call_with_retry(prompt_text):
     """
-    Maps questions to answers in a text using Gemini API.
+    Makes a Gemini API call with retry logic and tracks token usage.
+    """
+    global total_api_requests, total_input_tokens, total_output_tokens
+
+    if not model:
+        raise Exception("Gemini model not initialized")
+
+    total_api_requests += 1
+
+    response = model.generate_content(prompt_text)
+
+    # Track token usage
+    if hasattr(response, 'usage_metadata') and response.usage_metadata:
+        if hasattr(response.usage_metadata, 'prompt_token_count'):
+            total_input_tokens += response.usage_metadata.prompt_token_count
+        if hasattr(response.usage_metadata, 'candidates_token_count'):
+            total_output_tokens += response.usage_metadata.candidates_token_count
+
+    # Validate response
+    if not response.candidates:
+        raise ValueError("Gemini API returned no candidates in response.")
+    if not response.candidates[0].content.parts:
+        raise ValueError("Gemini API returned no content parts in first candidate.")
+
+    full_response_text = ""
+    for part in response.candidates[0].content.parts:
+        if hasattr(part, 'text'):
+            full_response_text += part.text
+        else:
+            raise ValueError(f"Gemini API returned non-text content part: {type(part)}")
+
+    # Extract JSON from response
+    json_start_index = full_response_text.find('{')
+    json_end_index = full_response_text.rfind('}')
+
+    if json_start_index == -1 or json_end_index == -1:
+        raise ValueError("No complete JSON object found in Gemini response text.")
+
+    json_string = full_response_text[json_start_index : json_end_index + 1]
+    mapped_data = json.loads(json_string)
+
+    return mapped_data, full_response_text
+
+def map_questions_to_answers(text, questions=None):
+    """
+    Enhanced Q&A mapping that can work with or without a question paper.
     
     Args:
-        text (str): The text containing questions and answers to be mapped
-        predefined_questions (list, optional): List of predefined questions with their IDs and marks
+        text: The OCR extracted text from student answer sheet
+        questions: Optional list of questions from question paper
         
     Returns:
-        list: A list of dictionaries, each containing a question-answer pair
+        List of mapped Q&A pairs
     """
-    # Validate input
-    if not text or not isinstance(text, str):
-        logger.error("Invalid input: text must be a non-empty string")
-        return []
-    
-    # Try to get Gemini model
     try:
-        gemini_model = get_gemini_model()
-        if not gemini_model:
-            raise ValueError("Failed to initialize Gemini model")
+        logger.info("Starting Q&A mapping process")
+        
+        if not questions or len(questions) == 0:
+            raise ValueError("Question paper is required for Q&A mapping. Cannot proceed without questions.")
+            
+        # Use advanced mapping with question paper
+        logger.info(f"Using question paper with {len(questions)} questions for mapping")
+        return map_with_question_paper(text, questions)
+            
     except Exception as e:
-        logger.error(f"Error initializing Gemini model: {e}")
+        logger.error(f"Error in Q&A mapping: {e}")
         raise
 
-    # Different prompts based on whether predefined questions are provided
-    if predefined_questions:
-        # Format the predefined questions for the prompt
-        formatted_questions = "\n\n".join([
-            f"Question {q.get('id', i+1)}{' [' + str(q.get('marks', 0)) + ' marks]' if q.get('marks') else ''}: {q.get('text', '')}"
-            for i, q in enumerate(predefined_questions)
-        ])
-        
-        prompt = f"""
-        You are mapping student answers to predefined questions in an examination.
-
-        PREDEFINED QUESTIONS:
-        {formatted_questions}
-
-        STUDENT ANSWER TEXT:
-        {text}
-
-        TASK:
-        For each predefined question above:
-        1. Identify and extract the student's answer from the text
-        2. Handle missing answers appropriately
-        3. For any answer you can't find, indicate it as "No answer provided"
-        
-        INSTRUCTIONS:
-        - Be flexible in matching answers - students might not use the exact same wording or structure
-        - Consider that the text may contain noise or scanning artifacts
-        - Some answers may span multiple paragraphs
-        - Focus on identifying the most relevant content for each question
-        
-        FORMAT YOUR RESPONSE AS A JSON ARRAY of objects with these fields:
-        - "questionNumber": The ID of the question (use the ID from the predefined question)
-        - "question": The full text of the question
-        - "answer": The extracted answer text
-        - "maxMarks": The maximum marks for the question (if available)
-
-        RESPONSE:
-        """
-    else:
-        # Original prompt for extracting both questions and answers from text
-        prompt = f"""
-        You are analyzing an educational document containing questions and answers.
-
-        DOCUMENT TEXT:
-        {text}
-
-        TASK:
-        Identify all question-answer pairs in this document.
-
-        INSTRUCTIONS:
-        1. Look for clear questions followed by their corresponding answers
-        2. Each question might have a number/identifier (like "Q1." or "Question 1:")
-        3. Questions may have marks indicated (e.g., "[5 marks]")
-        4. Extract both the question and its answer
-        5. Assign a question number from the document, or create one if missing
-
-        FORMAT YOUR RESPONSE AS A JSON ARRAY of objects with these fields:
-        - "questionNumber": The question number or identifier
-        - "question": The full text of the question
-        - "answer": The extracted answer text
-        - "maxMarks": The maximum marks for the question (if available, otherwise use 0)
-
-        RESPONSE:
-        """
-
-    # Function to make API call with exponential backoff
-    def safe_generate_content(prompt, max_retries=3):
-        retries = 0
-        while retries < max_retries:
-            try:
-                response = gemini_model.generate_content(prompt)
-                return response
-            except Exception as e:
-                retries += 1
-                logger.warning(f"API call failed (attempt {retries}): {e}")
-                if retries < max_retries:
-                    # Exponential backoff
-                    sleep_time = 2 ** retries
-                    logger.info(f"Retrying in {sleep_time} seconds...")
-                    time.sleep(sleep_time)
-                else:
-                    logger.error(f"All {max_retries} attempts failed")
-                    raise
-
-    # Make API call with retry mechanism
+def map_with_question_paper(answer_sheet_text, questions):
+    """
+    Advanced mapping using the question paper structure.
+    """
     try:
-        logger.info("Calling Gemini API to map questions to answers")
-        response = safe_generate_content(prompt)
-        response_text = response.text if hasattr(response, 'text') else str(response)
+        # Create question paper JSON structure
+        question_paper_json = {
+            "questions": questions,
+            "total_questions": len(questions)
+        }
         
-        # Extract JSON from response
-        # Look for JSON array pattern
-        json_match = re.search(r'\[\s*\{.*\}\s*\]', response_text, re.DOTALL)
-        if json_match:
-            json_str = json_match.group(0)
-            qa_pairs = json.loads(json_str)
-            
-            # Validate and clean up the data
-            result = []
-            for pair in qa_pairs:
-                # Ensure all required fields are present
-                cleaned_pair = {
-                    "questionNumber": pair.get("questionNumber", ""),
-                    "question": pair.get("question", ""),
-                    "answer": pair.get("answer", "No answer provided"),
-                    "maxMarks": int(pair.get("maxMarks", 0))
-                }
-                result.append(cleaned_pair)
-                
-            logger.info(f"Successfully mapped {len(result)} question-answer pairs")
-            return result
-        else:
-            logger.error("Failed to extract JSON from Gemini response")
-            return []
-            
+        # Generate mapping prompt
+        prompt = generate_mapping_prompt(question_paper_json, answer_sheet_text)
+        
+        # Make API call with retry logic
+        mapped_data, full_response = make_gemini_call_with_retry(prompt)
+        
+        logger.info(f"Mapping completed successfully. Found {len(mapped_data.get('mapped_answers', []))} Q&A pairs")
+        
+        # Convert to the expected format
+        qa_pairs = []
+        for item in mapped_data.get('mapped_answers', []):
+            qa_pairs.append({
+                "questionNumber": item.get('question_id', 'Unknown'),
+                "questionText": item.get('question_text', ''),
+                "answer": item.get('student_answer_extracted', ''),
+                "maxMarks": get_max_marks_for_question(item.get('question_id', ''), questions)
+            })
+        
+        return qa_pairs
+        
+    except RetryError as e:
+        logger.error(f"Failed to get valid mapping response after retries: {e}")
+        raise
+    except json.JSONDecodeError as e:
+        logger.error(f"Could not parse JSON response: {e}")
+        raise
     except Exception as e:
-        logger.error(f"Error mapping questions to answers: {e}")
-        raise 
+        logger.error(f"Error in advanced mapping: {e}")
+        raise
+
+
+
+def get_max_marks_for_question(question_id, questions):
+    """
+    Helper function to get max marks for a question from the question paper.
+    """
+    try:
+        for q in questions:
+            if q.get('id') == question_id or q.get('questionNumber') == question_id:
+                return q.get('marks', 10)
+        return 10  # Default marks
+    except:
+        return 10
+
+def get_mapping_stats():
+    """
+    Returns mapping statistics for monitoring.
+    """
+    return {
+        "total_input_tokens": total_input_tokens,
+        "total_output_tokens": total_output_tokens,
+        "total_api_requests": total_api_requests
+    } 

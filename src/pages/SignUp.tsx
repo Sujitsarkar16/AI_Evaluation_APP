@@ -1,13 +1,15 @@
-
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/Button";
 import { Input } from "@/components/Input";
 import { useToast } from "@/hooks/use-toast";
 import { Brain, CheckCircle, Eye, EyeOff } from "lucide-react";
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
 const SignUp = () => {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -21,18 +23,57 @@ const SignUp = () => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
   
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     
-    // Simulate account creation
-    setTimeout(() => {
-      toast({
-        title: "Account created!",
-        description: "Welcome to EduAI! You can now access your personalized learning dashboard.",
+    try {
+      // Split name into first and last name
+      const nameParts = formData.name.trim().split(' ');
+      const firstName = nameParts[0] || '';
+      const lastName = nameParts.slice(1).join(' ') || '';
+      
+      // Try to register with backend first
+      const response = await fetch(`${API_BASE_URL}/auth/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username: formData.email.split('@')[0], // Use email prefix as username
+          email: formData.email,
+          password: formData.password,
+          first_name: firstName,
+          last_name: lastName,
+          role: 'student'
+        }),
       });
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast({
+          title: "Account created successfully!",
+          description: "Your account has been created. You can now log in.",
+        });
+        
+        // Redirect to login page
+        navigate("/login");
+      } else {
+        toast({
+          title: "Registration failed",
+          description: data.message || "Unable to create account",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Registration failed",
+        description: "Network error. Please check your connection and try again.",
+        variant: "destructive",
+      });
+    } finally {
       setIsLoading(false);
-    }, 1500);
+    }
   };
   
   return (
@@ -41,7 +82,7 @@ const SignUp = () => {
         <div className="text-center mb-10">
           <Link to="/" className="inline-flex items-center">
             <Brain className="h-10 w-10 text-accent mr-2" />
-            <span className="text-2xl font-bold">EduAI</span>
+                          <span className="text-2xl font-bold">Autograder AI</span>
           </Link>
           <h2 className="mt-6 text-3xl font-bold">Create your account</h2>
           <p className="mt-2 text-muted-foreground">
@@ -104,7 +145,7 @@ const SignUp = () => {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-500"
+                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-600 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
                 >
                   {showPassword ? (
                     <EyeOff className="h-5 w-5" />
@@ -163,6 +204,8 @@ const SignUp = () => {
             </Button>
           </form>
           
+
+          
           <div className="mt-6">
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
@@ -208,27 +251,13 @@ const SignUp = () => {
               </Button>
             </div>
           </div>
-        </div>
-        
-        <div className="mt-8 text-center">
-          <p className="text-sm text-muted-foreground">
+          
+          <p className="mt-6 text-center text-sm text-muted-foreground">
             Already have an account?{" "}
             <Link to="/login" className="font-medium text-accent hover:text-accent/80 transition-colors">
               Sign in
             </Link>
           </p>
-          
-          <div className="mt-6 bg-accent/5 p-4 rounded-lg">
-            <div className="flex items-start">
-              <CheckCircle className="h-5 w-5 text-accent flex-shrink-0 mr-3 mt-0.5" />
-              <div>
-                <h3 className="text-sm font-semibold">Free 14-day trial</h3>
-                <p className="text-xs text-muted-foreground mt-1">
-                  No credit card required. Full access to all features during your trial.
-                </p>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>

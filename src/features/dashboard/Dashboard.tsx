@@ -1,113 +1,132 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Brain, Calendar, FileText, Home, LogOut, 
-  Settings, User, Users, Bell, Book, 
-  BarChart3, 
+  BarChart3, FileText, Settings, LogOut, 
+  Users, Bell, BookOpen, User
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
-import DashboardContent from './DashboardContent';
 import { Outlet } from 'react-router-dom';
+import { useToast } from "@/hooks/use-toast";
 
 const Dashboard = () => {
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  
   const userData = {
-    name: "Alex Johnson",
-    role: "Computer Science Student"
+    name: "Sujit Sarkar",
+    role: "Educator"
   };
   
   const sidebarItems = [
-    { icon: Home, label: "Dashboard", path: "/dashboard", active: true },
-    { icon: FileText, label: "Classes", path: "/dashboard/classes" },
-    { icon: User, label: "Evaluations", path: "/dashboard/evaluations" },
-    { icon: Users, label: "Agents", path: "/dashboard/agents" },
     { icon: BarChart3, label: "Analytics", path: "/dashboard/analytics" },
-    { icon: Book, label: "Question Papers", path: "/dashboard/question-papers" },
-    { icon: Settings, label: "Settings", path: "/dashboard/settings" },
-    { icon: LogOut, label: "Log Out", path: "/login" }
+    { icon: FileText, label: "Evaluation", path: "/dashboard/evaluations" },
+    { icon: BookOpen, label: "Question Paper", path: "/dashboard/question-papers" },
+    { icon: Users, label: "Assessment Management", path: "/dashboard/access" },
+    { icon: Bell, label: "Notifications", path: "/dashboard/notifications" },
+    { icon: Settings, label: "Settings", path: "/dashboard/settings" }
   ];
   
-  const [activePage, setActivePage] = useState('dashboard');
+  const [activePage, setActivePage] = useState('analytics');
   
-  // Get the current route and set active page accordingly
+  // Redirect to analytics if on dashboard root
   useEffect(() => {
     const path = window.location.pathname;
-    const page = path.split('/').pop();
-    if (page) {
-      setActivePage(page);
+    if (path === '/dashboard' || path === '/dashboard/') {
+      navigate('/dashboard/analytics', { replace: true });
+      setActivePage('analytics');
+    } else {
+      const page = path.split('/').pop();
+      if (page) {
+        setActivePage(page);
+      }
     }
-  }, []);
+  }, [navigate]);
   
   const handleNavigation = (path) => {
     const page = path.split('/').pop();
     setActivePage(page);
   };
 
+  const handleLogout = () => {
+    // Clear authentication data from localStorage
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('user');
+    localStorage.removeItem('userRole');
+    localStorage.removeItem('selectedQuestionPaperId');
+    localStorage.removeItem('defaultEvaluationType');
+    
+    // Show success message
+    toast({
+      title: "Logged out successfully",
+      description: "You have been safely logged out of your account.",
+    });
+    
+    // Redirect to home page
+    navigate('/');
+  };
+
   return (
-    <div className="flex min-h-screen bg-gradient-to-br from-blue-50 to-blue-100">
+    <div className="flex min-h-screen bg-gray-50">
       {/* Sidebar */}
-      <div className="w-64 bg-gradient-to-b from-blue-600 to-blue-800 text-white p-4 shadow-lg h-screen overflow-y-auto">
-        <div className="flex flex-col items-center mb-8 mt-4">
-          <div className="w-20 h-20 rounded-full bg-white/20 flex items-center justify-center mb-3 overflow-hidden">
-            <img src="/lovable-uploads/3fbe7276-adea-47ae-a582-f65b777fa7da.png" alt="Profile" className="w-full h-full object-cover" />
-          </div>
-          <h2 className="text-lg font-semibold">{userData.name}</h2>
-          <p className="text-blue-200 text-sm">{userData.role}</p>
+      <div className="fixed left-0 top-0 w-64 bg-white border-r border-gray-200 p-6 shadow-sm h-screen overflow-y-auto z-10">
+        <div className="mb-8">
+          <h1 className="text-lg font-bold text-gray-900">LMS Platform</h1>
+          <p className="text-sm text-gray-500">Educator Dashboard</p>
         </div>
         
-        <nav className="mt-8">
-          <ul className="space-y-2">
-            {sidebarItems.map((item, index) => (
-              <li key={index}>
-                <Link 
-                  to={item.path} 
-                  className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
-                    item.active || activePage === item.path.split('/').pop()
-                      ? 'bg-white/20 text-white' 
-                      : 'text-blue-100 hover:bg-white/10 hover:text-white'
-                  }`}
-                  onClick={() => handleNavigation(item.path)}
-                >
-                  <item.icon size={20} />
-                  <span>{item.label}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
+        <nav className="space-y-1 flex-1">
+          {sidebarItems.map((item, index) => (
+            <Link 
+              key={index}
+              to={item.path} 
+              className={`flex items-center space-x-3 px-3 py-3 rounded-lg transition-colors ${
+                activePage === item.path.split('/').pop()
+                  ? 'bg-gray-100 text-gray-900' 
+                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+              }`}
+              onClick={() => handleNavigation(item.path)}
+            >
+              <item.icon size={20} />
+              <span className="text-sm font-medium">{item.label}</span>
+            </Link>
+          ))}
         </nav>
+        
+        {/* Logout Button */}
+        <div className="mt-auto pt-4 border-t border-gray-200">
+          <Button
+            onClick={handleLogout}
+            variant="outline"
+            className="w-full flex items-center justify-center space-x-2 text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300"
+          >
+            <LogOut size={20} />
+            <span>Logout</span>
+          </Button>
+        </div>
       </div>
       
-      <div className="flex-1 p-4 md:p-8 overflow-auto">
-        <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
-          <div className="relative w-full md:w-96">
-            <Input 
-              type="text" 
-              placeholder="Search anything" 
-              className="pl-10 pr-4 py-2 bg-white rounded-full border border-blue-100 shadow-sm focus:border-blue-300"
-            />
-            <div className="absolute left-3 top-2.5 text-gray-400">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
-              </svg>
+      {/* Main Content */}
+      <div className="flex-1 ml-64">
+        {/* Top Bar with User Profile */}
+        <div className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-5">
+          <div className="flex items-center justify-end">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                <User size={20} className="text-blue-600" />
+              </div>
+              <div>
+                <h3 className="text-sm font-medium text-gray-900">{userData.name}</h3>
+                <p className="text-xs text-gray-500">{userData.role}</p>
+              </div>
             </div>
-          </div>
-          
-          <div className="flex items-center space-x-4">
-            <button className="relative p-2 text-gray-500 hover:text-blue-600 transition-colors">
-              <Bell size={20} />
-              <span className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full"></span>
-            </button>
-            <Link to="/settings" className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center overflow-hidden">
-              <img src="/lovable-uploads/3fbe7276-adea-47ae-a582-f65b777fa7da.png" alt="Profile" className="w-full h-full object-cover" />
-            </Link>
           </div>
         </div>
         
-        {activePage === 'dashboard' ? (
-          <DashboardContent />
-        ) : (
+        {/* Dashboard Content */}
+        <div className="p-6">
           <Outlet />
-        )}
+        </div>
       </div>
     </div>
   );

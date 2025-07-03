@@ -16,26 +16,26 @@ const Home = () => {
         
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <div className="py-20 md:py-28 lg:py-32 flex flex-col items-center text-center">
-            <div className="inline-flex items-center px-3 py-1 rounded-full border border-accent/30 bg-accent/5 text-accent/80 text-sm font-medium mb-6 animate-fade-in" style={{ animationDelay: "0.2s" }}>
+            <div className="inline-flex items-center px-3 py-1 rounded-full border border-blue-300 bg-blue-50 dark:bg-blue-900/30 dark:border-blue-700 text-blue-700 dark:text-blue-300 text-sm font-medium mb-6 animate-fade-in" style={{ animationDelay: "0.2s" }}>
               <span className="relative flex h-2 w-2 mr-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-accent"></span>
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-600 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-600"></span>
               </span>
-              Introducing the future of AI-powered learning
+              Introducing the future of AI-powered grading
             </div>
             
             <h1 className="hero-title animate-fade-in" style={{ animationDelay: "0.4s" }}>
-              Transform Education with <span className="gradient-text">Artificial Intelligence</span>
+              Transform Grading with <span className="gradient-text">Artificial Intelligence</span>
             </h1>
             
             <p className="hero-subtitle animate-fade-in" style={{ animationDelay: "0.6s" }}>
-              Our intelligent learning platform uses advanced AI to personalize education, 
-              track progress, and provide insights for better learning outcomes.
+              Our intelligent autograding platform uses advanced AI to automate assessment, 
+              provide detailed feedback, and deliver insights for better educational outcomes.
             </p>
             
             <div className="flex flex-col sm:flex-row gap-4 mt-8 animate-fade-in" style={{ animationDelay: "0.8s" }}>
               <Link to="/signup">
-                <Button size="lg" className="bg-accent hover:bg-accent/90 rounded-lg text-white px-8 transition-all duration-300 hover:scale-105">
+                <Button size="lg" className="bg-blue-600 hover:bg-blue-700 rounded-lg text-white px-8 transition-all duration-300 hover:scale-105">
                   Get Started <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </Link>
@@ -50,8 +50,8 @@ const Home = () => {
               <div className="absolute -inset-0.5 bg-gradient-to-r from-accent/30 to-blue-500/30 rounded-2xl blur opacity-30"></div>
               <div className="relative bg-background/80 backdrop-blur-sm border border-white/10 rounded-2xl shadow-xl overflow-hidden">
                 <img 
-                  src="https://placehold.co/1200x600/2563eb/FFFFFF/png?text=EduAI+Dashboard+Preview&font=montserrat" 
-                  alt="EduAI platform dashboard preview" 
+                  src="https://placehold.co/1200x600/2563eb/FFFFFF/png?text=Autograder+AI+Dashboard+Preview&font=montserrat" 
+                  alt="Autograder AI platform dashboard preview" 
                   className="w-full max-w-5xl rounded-xl"
                 />
               </div>
@@ -64,76 +64,76 @@ const Home = () => {
       <section className="py-20 md:py-32">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
-            <h2 className="section-title animate-slide-in-up">Powerful Features for Modern Learning</h2>
+            <h2 className="section-title animate-slide-in-up">Powerful Features for Modern Assessment</h2>
             <p className="section-subtitle animate-slide-in-up">
-              Our platform combines artificial intelligence with proven educational methods to deliver 
-              a learning experience that adapts to each student's needs.
+              Our platform combines artificial intelligence with proven assessment methods to deliver 
+              an evaluation experience that provides consistent and meaningful feedback.
             </p>
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             <div className="feature-card glass-card rounded-xl p-6 animate-slide-in-up" style={{ animationDelay: "0.1s" }}>
               <div className="bg-accent/10 p-3 rounded-lg w-fit mb-5">
-                <BrainCircuit className="h-6 w-6 text-accent" />
+                <BrainCircuit className="h-6 w-6 text-blue-600 dark:text-blue-400" />
               </div>
-              <h3 className="text-xl font-semibold mb-3">AI-Powered Learning</h3>
-              <p className="text-muted-foreground">
-                Our AI engine analyzes learning patterns and adapts content to match each student's pace, 
-                preferences, and strengths.
+              <h3 className="text-xl font-semibold mb-3">AI-Powered Grading</h3>
+              <p className="text-gray-700 dark:text-gray-300">
+                Our AI engine analyzes student responses and provides consistent, detailed feedback that matches 
+                expert-level evaluation standards.
               </p>
             </div>
             
             <div className="feature-card glass-card rounded-xl p-6 animate-slide-in-up" style={{ animationDelay: "0.2s" }}>
               <div className="bg-accent/10 p-3 rounded-lg w-fit mb-5">
-                <BookOpen className="h-6 w-6 text-accent" />
+                <BookOpen className="h-6 w-6 text-blue-600 dark:text-blue-400" />
               </div>
-              <h3 className="text-xl font-semibold mb-3">Rich Content Library</h3>
-              <p className="text-muted-foreground">
-                Access thousands of lessons, interactive exercises, videos, and assessments across 
-                various subjects and difficulty levels.
+              <h3 className="text-xl font-semibold mb-3">Comprehensive Rubrics</h3>
+              <p className="text-gray-700 dark:text-gray-300">
+                Access thousands of pre-built assessment rubrics and evaluation criteria across 
+                various subjects and assignment types.
               </p>
             </div>
             
             <div className="feature-card glass-card rounded-xl p-6 animate-slide-in-up" style={{ animationDelay: "0.3s" }}>
               <div className="bg-accent/10 p-3 rounded-lg w-fit mb-5">
-                <GraduationCap className="h-6 w-6 text-accent" />
+                <GraduationCap className="h-6 w-6 text-blue-600 dark:text-blue-400" />
               </div>
-              <h3 className="text-xl font-semibold mb-3">Personalized Paths</h3>
-              <p className="text-muted-foreground">
-                Custom learning journeys that adapt to goals, knowledge gaps, and learning style for 
-                maximum effectiveness.
+              <h3 className="text-xl font-semibold mb-3">Custom Evaluation</h3>
+              <p className="text-gray-700 dark:text-gray-300">
+                Custom assessment criteria that adapt to course requirements, grading standards, and 
+                learning objectives for maximum accuracy.
               </p>
             </div>
             
             <div className="feature-card glass-card rounded-xl p-6 animate-slide-in-up" style={{ animationDelay: "0.4s" }}>
               <div className="bg-accent/10 p-3 rounded-lg w-fit mb-5">
-                <Users className="h-6 w-6 text-accent" />
+                <Users className="h-6 w-6 text-blue-600 dark:text-blue-400" />
               </div>
-              <h3 className="text-xl font-semibold mb-3">Collaborative Learning</h3>
-              <p className="text-muted-foreground">
-                Connect with peers, join study groups, and participate in discussions to enhance 
-                understanding through social learning.
+              <h3 className="text-xl font-semibold mb-3">Batch Processing</h3>
+              <p className="text-gray-700 dark:text-gray-300">
+                Process multiple submissions simultaneously, saving hours of grading time while 
+                maintaining consistent evaluation standards.
               </p>
             </div>
             
             <div className="feature-card glass-card rounded-xl p-6 animate-slide-in-up" style={{ animationDelay: "0.5s" }}>
               <div className="bg-accent/10 p-3 rounded-lg w-fit mb-5">
-                <LineChart className="h-6 w-6 text-accent" />
+                <LineChart className="h-6 w-6 text-blue-600 dark:text-blue-400" />
               </div>
-              <h3 className="text-xl font-semibold mb-3">Progress Analytics</h3>
-              <p className="text-muted-foreground">
-                Detailed insights into learning performance with actionable recommendations to 
-                improve knowledge retention and outcomes.
+              <h3 className="text-xl font-semibold mb-3">Grading Analytics</h3>
+              <p className="text-gray-700 dark:text-gray-300">
+                Detailed insights into student performance with actionable feedback recommendations to 
+                improve assessment quality and outcomes.
               </p>
             </div>
             
             <div className="feature-card glass-card rounded-xl p-6 animate-slide-in-up" style={{ animationDelay: "0.6s" }}>
               <div className="bg-accent/10 p-3 rounded-lg w-fit mb-5">
-                <Shield className="h-6 w-6 text-accent" />
+                <Shield className="h-6 w-6 text-blue-600 dark:text-blue-400" />
               </div>
               <h3 className="text-xl font-semibold mb-3">Secure Platform</h3>
-              <p className="text-muted-foreground">
-                Enterprise-grade security ensures your data and learning progress are always 
+              <p className="text-gray-700 dark:text-gray-300">
+                Enterprise-grade security ensures your assessment data and student submissions are always 
                 protected and private.
               </p>
             </div>
@@ -147,7 +147,7 @@ const Home = () => {
           <div className="text-center mb-16">
             <h2 className="section-title">What Our Users Say</h2>
             <p className="section-subtitle">
-              Hear from educators and learners who have transformed their educational experience with EduAI.
+              Hear from educators who have transformed their grading experience with Autograder AI.
             </p>
           </div>
           
@@ -156,19 +156,19 @@ const Home = () => {
               {
                 name: "Dr. Emma Rodriguez",
                 role: "University Professor",
-                quote: "EduAI has revolutionized how I teach complex subjects. The personalized learning paths ensure every student gets exactly what they need.",
+                quote: "Autograder AI has revolutionized how I grade assignments. The detailed feedback and consistent evaluation ensure every student receives fair and comprehensive assessment.",
                 delay: "0.1s"
               },
               {
                 name: "Jason Chen",
-                role: "Computer Science Student",
-                quote: "The AI tutoring is like having a personal instructor available 24/7. It helped me tackle difficult programming concepts at my own pace.",
+                role: "Teaching Assistant",
+                quote: "The automated grading saves me countless hours each week. I can now focus on providing additional support to students who need it most.",
                 delay: "0.2s"
               },
               {
                 name: "Sarah Johnson",
                 role: "High School Teacher",
-                quote: "The analytics dashboard gives me unprecedented insight into how my students are progressing, allowing me to intervene exactly when needed.",
+                quote: "The detailed feedback reports help me understand exactly where my students are struggling, allowing me to provide targeted support when needed.",
                 delay: "0.3s"
               }
             ].map((testimonial, index) => (
@@ -186,7 +186,7 @@ const Home = () => {
                   <p className="text-lg mb-6 flex-grow">{testimonial.quote}</p>
                   <div>
                     <p className="font-semibold">{testimonial.name}</p>
-                    <p className="text-sm text-muted-foreground">{testimonial.role}</p>
+                    <p className="text-sm text-gray-700 dark:text-gray-300">{testimonial.role}</p>
                   </div>
                 </div>
               </div>
@@ -203,9 +203,9 @@ const Home = () => {
             
             <div className="relative z-10 px-6 py-12 md:p-16 lg:p-20 text-white">
               <div className="max-w-3xl mx-auto text-center">
-                <h2 className="text-3xl md:text-4xl font-bold mb-6">Ready to Transform Learning?</h2>
+                <h2 className="text-3xl md:text-4xl font-bold mb-6">Ready to Transform Grading?</h2>
                 <p className="text-xl mb-8 text-white/80">
-                  Join thousands of educators and learners who are already using EduAI to revolutionize their educational experience.
+                  Join thousands of educators who are already using Autograder AI to revolutionize their grading and assessment workflow.
                 </p>
                 <div className="flex flex-col sm:flex-row justify-center gap-4">
                   <Link to="/signup">

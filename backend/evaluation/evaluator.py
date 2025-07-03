@@ -1,7 +1,3 @@
-"""
-Evaluation Module
-Evaluates QA pairs using Gemini's multi-agent system for a comprehensive assessment
-"""
 
 import os
 import logging
@@ -11,6 +7,9 @@ import re
 import markdown
 import google.generativeai as genai
 from dotenv import load_dotenv
+from tenacity import retry, stop_after_attempt, wait_fixed, RetryError
+from concurrent.futures import ThreadPoolExecutor, as_completed
+# EVALUATION_PROMPT import removed - using only rubric-based evaluation
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(levelname)s - %(message)s')
@@ -19,8 +18,24 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv()
 
-# Initialize the model at module level
-model = None
+# Configure Gemini API
+try:
+    api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise ValueError("No Gemini API key found. Set GOOGLE_API_KEY or GEMINI_API_KEY environment variable.")
+    genai.configure(api_key=api_key)
+    MODEL_NAME = 'gemini-2.5-flash-preview-04-17'
+    model = genai.GenerativeModel(model_name=MODEL_NAME)
+    logger.info(f"Successfully initialized Gemini model for evaluation: {MODEL_NAME}")
+except Exception as e:
+    logger.error(f"Error configuring Gemini API for evaluation: {e}")
+    model = None
+
+# Global metrics
+overall_run_input_tokens = 0
+overall_run_output_tokens = 0
+overall_run_api_requests = 0
+overall_run_sheets_evaluated = 0
 
 def get_gemini_model():
     """Initialize and return the Gemini model."""
@@ -40,7 +55,7 @@ def get_gemini_model():
         genai.configure(api_key=api_key)
         
         # Use the specified model name
-        gemini_model_name = "gemini-2.0-flash-thinking-exp-01-21"
+        gemini_model_name = "gemini-2.5-flash-preview-04-17"
         
         # Initialize the model
         model = genai.GenerativeModel(gemini_model_name)
@@ -52,395 +67,377 @@ def get_gemini_model():
         logger.error(f"Error initializing Gemini model: {e}")
         raise Exception(f"Failed to initialize Gemini model: {e}")
 
-def get_professors():
+# Professor prompts removed - using only rubric-based evaluation as requested
+
+# generate_evaluation_prompt function removed - using only rubric-based evaluation
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_fixed(1),
+    reraise=True
+)
+def make_gemini_call_with_retry(prompt_text, q_id="Unknown"):
     """
-    Return a dictionary of professor personas for multi-agent evaluation.
-    Each professor has a specific role in the evaluation process.
+    Makes a Gemini API call with retry logic and tracks token usage.
+    """
+    global overall_run_api_requests, overall_run_input_tokens, overall_run_output_tokens
+
+    if not model:
+        raise Exception("Gemini model not initialized")
+
+    overall_run_api_requests += 1
+
+    try:
+        response = model.generate_content(prompt_text)
+
+        # Track token usage
+        if hasattr(response, 'usage_metadata') and response.usage_metadata:
+            if hasattr(response.usage_metadata, 'prompt_token_count'):
+                overall_run_input_tokens += response.usage_metadata.prompt_token_count
+            if hasattr(response.usage_metadata, 'candidates_token_count'):
+                overall_run_output_tokens += response.usage_metadata.candidates_token_count
+
+        # Validate response
+        if not response.candidates:
+            raise ValueError("Gemini API returned no candidates")
+        if not response.candidates[0].content.parts:
+            raise ValueError("Gemini API returned no content parts")
+
+        full_response_text = ""
+        for part in response.candidates[0].content.parts:
+            if hasattr(part, 'text'):
+                full_response_text += part.text
+            else:
+                raise ValueError(f"Non-text content part: {type(part)}")
+
+        # Extract JSON from response
+        json_start_index = full_response_text.find('{')
+        json_end_index = full_response_text.rfind('}')
+
+        if json_start_index == -1 or json_end_index == -1:
+            raise ValueError("No complete JSON object found in response")
+
+        json_string = full_response_text[json_start_index : json_end_index + 1]
+        evaluation_data = json.loads(json_string)
+
+        logger.info(f"Successfully evaluated question {q_id}")
+        return evaluation_data
+
+    except Exception as e:
+        logger.error(f"Error evaluating question {q_id}: {e}")
+        raise
+
+def evaluate_single_question(question_data, evaluation_type="rubric"):
+    """
+    Evaluates a single question-answer pair using rubric-based evaluation.
+    
+    Args:
+        question_data: Dictionary containing question info and student answer
+        evaluation_type: Type of evaluation (defaults to "rubric" - only rubric-based evaluation supported)
     
     Returns:
-        dict: Dictionary containing professor personas with their system messages.
+        Dictionary containing evaluation results
     """
+    try:
+        question_text = question_data.get('questionText', question_data.get('question', ''))
+        student_answer = question_data.get('answer', '')
+        max_marks = question_data.get('maxMarks', 10)
+        question_id = question_data.get('questionNumber', 'Unknown')
+
+        if not question_text or not student_answer:
+            logger.warning(f"Missing data for question {question_id}")
+            return create_default_evaluation(question_data)
+
+        # Use only rubric-based evaluation as requested
+        prompt = generate_rubric_evaluation_prompt(question_text, student_answer, max_marks)
+
+        # Make API call
+        evaluation_result = make_gemini_call_with_retry(prompt, question_id)
+        
+        # Process and return result
+        return process_evaluation_result(evaluation_result, question_data)
+
+    except Exception as e:
+        logger.error(f"Error evaluating question {question_data.get('questionNumber', 'Unknown')}: {e}")
+        return create_error_evaluation(question_data, str(e))
+
+# BIGGEN evaluation removed - using only rubric-based evaluation as requested
+
+def generate_rubric_evaluation_prompt(question_text, student_answer_text, max_marks):
+    """Generate rubric-based evaluation prompt"""
+    # Calculate maximum scores for each criterion
+    accuracy_max = round(max_marks * 0.4)
+    completeness_max = round(max_marks * 0.3) 
+    clarity_max = round(max_marks * 0.2)
+    depth_max = max_marks - accuracy_max - completeness_max - clarity_max  # Ensure total equals max_marks
+    
+    return f"""You are evaluating using a structured rubric-based approach.
+Use clear criteria and scoring levels for consistent evaluation.
+
+**Question ({max_marks} marks):**
+{question_text}
+
+**Student Answer:**
+{student_answer_text}
+
+**Rubric Levels:**
+- Excellent (90-100%): Exceeds expectations
+- Good (75-89%): Meets expectations with minor gaps
+- Satisfactory (60-74%): Meets basic expectations
+- Needs Improvement (40-59%): Below expectations
+- Unsatisfactory (0-39%): Far below expectations
+
+**Evaluation Criteria:**
+1. **Accuracy** (Max: {accuracy_max} marks): Correctness of information
+2. **Completeness** (Max: {completeness_max} marks): Coverage of all aspects
+3. **Clarity** (Max: {clarity_max} marks): Clear communication
+4. **Depth** (Max: {depth_max} marks): Level of detail and insight
+
+Provide your evaluation in the following JSON format. Do NOT include any text outside the JSON block:
+
+{{
+    "evaluation": {{
+        "max_marks": {max_marks},
+        "rubric_scores": {{
+            "accuracy": {{"score": 0, "max_score": {accuracy_max}, "level": "Excellent/Good/Satisfactory/Needs Improvement/Unsatisfactory", "justification": "Detailed explanation of scoring"}},
+            "completeness": {{"score": 0, "max_score": {completeness_max}, "level": "Excellent/Good/Satisfactory/Needs Improvement/Unsatisfactory", "justification": "Detailed explanation of scoring"}},
+            "clarity": {{"score": 0, "max_score": {clarity_max}, "level": "Excellent/Good/Satisfactory/Needs Improvement/Unsatisfactory", "justification": "Detailed explanation of scoring"}},
+            "depth": {{"score": 0, "max_score": {depth_max}, "level": "Excellent/Good/Satisfactory/Needs Improvement/Unsatisfactory", "justification": "Detailed explanation of scoring"}}
+        }},
+        "total_score": 0,
+        "percentage": 0,
+        "overall_level": "Overall performance level",
+        "evaluation_type": "Rubric-Based",
+        "feedback": "Comprehensive feedback highlighting strengths and areas for improvement"
+    }}
+}}"""
+
+def process_evaluation_result(evaluation_result, question_data):
+    """Process and standardize evaluation result"""
+    try:
+        eval_data = evaluation_result.get('evaluation', evaluation_result)
+        
+        # Extract scores based on evaluation type
+        total_score = eval_data.get('total_score', eval_data.get('overall_score', 0))
+        percentage = eval_data.get('percentage', 0)
+        max_marks = eval_data.get('max_marks', question_data.get('maxMarks', 10))
+        
+        # Calculate total score from rubric scores if not provided
+        if not total_score and eval_data.get('rubric_scores'):
+            rubric_scores = eval_data.get('rubric_scores', {})
+            total_score = sum(score_data.get('score', 0) for score_data in rubric_scores.values() if isinstance(score_data, dict))
+        
+        # Calculate percentage if not provided
+        if not percentage and total_score and max_marks:
+            percentage = round((total_score / max_marks) * 100, 2)
+        
+        # Build comprehensive feedback from rubric if available
+        feedback = eval_data.get('feedback', 'No feedback provided')
+        rubric_scores = eval_data.get('rubric_scores', {})
+        
+        if rubric_scores and isinstance(rubric_scores, dict):
+            feedback_parts = [feedback]
+            feedback_parts.append("\n\nDetailed Rubric Breakdown:")
+            for criterion, data in rubric_scores.items():
+                if isinstance(data, dict):
+                    score = data.get('score', 0)
+                    max_score = data.get('max_score', 0)
+                    level = data.get('level', 'N/A')
+                    justification = data.get('justification', 'No justification provided')
+                    feedback_parts.append(f"• {criterion.title()}: {score}/{max_score} ({level}) - {justification}")
+            feedback = "\n".join(feedback_parts)
+
+        return {
+            "questionNumber": question_data.get('questionNumber', 'Unknown'),
+            "questionText": question_data.get('questionText', question_data.get('question', '')),
+            "studentAnswer": question_data.get('answer', ''),
+            "maxMarks": max_marks,
+            "obtainedMarks": total_score,
+            "percentage": percentage,
+            "feedback": feedback,
+            "rubricScores": rubric_scores,
+            "evaluationType": eval_data.get('evaluation_type', 'Rubric-Based'),
+            "evaluationDetails": eval_data
+        }
+
+    except Exception as e:
+        logger.error(f"Error processing evaluation result: {e}")
+        logger.error(f"Evaluation result data: {evaluation_result}")
+        return create_error_evaluation(question_data, str(e))
+
+def create_default_evaluation(question_data):
+    """Create default evaluation for missing data"""
     return {
-        "Theoretical_Evaluator": {
-            "name": "Theoretical_Evaluator",
-            "system_message": """You are Professor Sharma, a supportive Assistant Professor in Computer Science with 10 years of expertise, acting as a Theoretical Evaluator.
+        "questionNumber": question_data.get('questionNumber', 'Unknown'),
+        "questionText": question_data.get('questionText', question_data.get('question', '')),
+        "studentAnswer": question_data.get('answer', ''),
+        "maxMarks": question_data.get('maxMarks', 10),
+        "obtainedMarks": 0,
+        "percentage": 0,
+        "feedback": "Unable to evaluate: Missing question or answer data",
+        "rubricScores": {},
+        "evaluationType": "Default",
+        "evaluationDetails": {}
+    }
 
-Your evaluation priorities:
-- Recognizing ATTEMPTS at addressing theoretical concepts, even if imperfect
-- Giving benefit of doubt when core ideas are present but details are missing
-- Awarding partial credit generously for honest attempts
-- Finding conceptual understanding beneath imprecise language
-- Encouraging further development rather than penalizing gaps
+def create_error_evaluation(question_data, error_msg):
+    """Create error evaluation"""
+    return {
+        "questionNumber": question_data.get('questionNumber', 'Unknown'),
+        "questionText": question_data.get('questionText', question_data.get('question', '')),
+        "studentAnswer": question_data.get('answer', ''),
+        "maxMarks": question_data.get('maxMarks', 10),
+        "obtainedMarks": 0,
+        "percentage": 0,
+        "feedback": f"Evaluation error: {error_msg}",
+        "rubricScores": {},
+        "evaluationType": "Error",
+        "evaluationDetails": {"error": error_msg}
+    }
 
-You have LENIENT grading standards for theoretical aspects. When evaluating, first identify the key theoretical points required by the question, then award credit for ANY points the student attempts to address, even partially. Be generous with marks where the student shows effort or partial understanding. Always award grace marks (at least 70% of allocated marks) for genuine attempts."""
+def evaluate_and_generate_report(qa_pairs, evaluation_type="rubric"):
+    """
+    Main function to evaluate all Q&A pairs and generate a comprehensive report.
+    
+    Args:
+        qa_pairs: List of question-answer pairs
+        evaluation_type: Type of evaluation to perform
+    
+    Returns:
+        Dictionary containing evaluation results and summary
+    """
+    global overall_run_sheets_evaluated
+    
+    try:
+        logger.info(f"Starting evaluation of {len(qa_pairs)} questions using {evaluation_type} evaluation")
+        
+        if not qa_pairs:
+            logger.warning("No Q&A pairs provided for evaluation")
+            return create_empty_report()
+
+        overall_run_sheets_evaluated += 1
+        
+        # Evaluate questions in parallel for better performance
+        results = []
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            future_to_question = {
+                executor.submit(evaluate_single_question, qa_data, evaluation_type): qa_data
+                for qa_data in qa_pairs
+            }
+            
+            for future in as_completed(future_to_question.keys()):
+                try:
+                    result = future.result()
+                    results.append(result)
+                except Exception as e:
+                    question_data = future_to_question[future]
+                    logger.error(f"Failed to evaluate question {question_data.get('questionNumber', 'Unknown')}: {e}")
+                    results.append(create_error_evaluation(question_data, str(e)))
+        
+        # Sort results by question number
+        results.sort(key=lambda x: str(x.get('questionNumber', '')))
+        
+        # Generate summary statistics
+        summary = generate_evaluation_summary(results, evaluation_type)
+        
+        logger.info(f"Evaluation completed. Total score: {summary['totalObtained']}/{summary['totalMaxMarks']} ({summary['overallPercentage']:.1f}%)")
+        
+        return {
+            "evaluations": results,
+            "summary": summary,
+            "evaluationType": evaluation_type,
+            "totalQuestions": len(results),
+            "processingStats": {
+                "input_tokens": overall_run_input_tokens,
+                "output_tokens": overall_run_output_tokens,
+                "api_requests": overall_run_api_requests
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"Error in evaluation process: {e}")
+        raise
+
+def generate_evaluation_summary(results, evaluation_type):
+    """Generate summary statistics from evaluation results"""
+    try:
+        total_max_marks = sum(r.get('maxMarks', 0) for r in results)
+        total_obtained = sum(r.get('obtainedMarks', 0) for r in results)
+        overall_percentage = (total_obtained / total_max_marks * 100) if total_max_marks > 0 else 0
+        
+        # Grade calculation
+        if overall_percentage >= 90:
+            grade = "A+"
+        elif overall_percentage >= 80:
+            grade = "A"
+        elif overall_percentage >= 70:
+            grade = "B"
+        elif overall_percentage >= 60:
+            grade = "C"
+        elif overall_percentage >= 50:
+            grade = "D"
+        else:
+            grade = "F"
+        
+        # Question-wise performance
+        questions_above_80 = len([r for r in results if r.get('percentage', 0) >= 80])
+        questions_below_50 = len([r for r in results if r.get('percentage', 0) < 50])
+        
+        return {
+            "totalMaxMarks": total_max_marks,
+            "totalObtained": round(total_obtained, 2),
+            "overallPercentage": round(overall_percentage, 2),
+            "grade": grade,
+            "questionsEvaluated": len(results),
+            "questionsAbove80": questions_above_80,
+            "questionsBelow50": questions_below_50,
+            "evaluationType": evaluation_type,
+            "averageScore": round(total_obtained / len(results), 2) if results else 0
+        }
+        
+    except Exception as e:
+        logger.error(f"Error generating summary: {e}")
+        return {
+            "totalMaxMarks": 0,
+            "totalObtained": 0,
+            "overallPercentage": 0,
+            "grade": "N/A",
+            "questionsEvaluated": 0,
+            "questionsAbove80": 0,
+            "questionsBelow50": 0,
+            "evaluationType": evaluation_type,
+            "averageScore": 0
+        }
+
+def create_empty_report():
+    """Create empty report when no data is provided"""
+    return {
+        "evaluations": [],
+        "summary": {
+            "totalMaxMarks": 0,
+            "totalObtained": 0,
+            "overallPercentage": 0,
+            "grade": "N/A",
+            "questionsEvaluated": 0,
+            "questionsAbove80": 0,
+            "questionsBelow50": 0,
+            "evaluationType": "None",
+            "averageScore": 0
         },
-        "Practical_Evaluator": {
-            "name": "Practical_Evaluator",
-            "system_message": """You are Professor Sharma, a supportive Assistant Professor in Computer Science with 10 years of expertise, acting as a Practical Evaluator.
-
-Your evaluation priorities:
-- Recognizing ATTEMPTS at practical application, even if the execution is flawed
-- Giving credit for directionally correct examples, even if not perfectly implemented
-- Valuing creative attempts to connect theory to practice
-- Acknowledging problem-solving approaches, even if not optimal
-- Finding merit in implementation attempts, even with errors
-
-You are VERY LENIENT on practical evaluation. When evaluating, identify any practical applications attempted by the student and award generous credit for effort and partial understanding. Be quick to award grace marks (at least 70% of allocated marks) for genuine attempts, even if the execution has flaws."""
-        },
-        "Holistic_Evaluator": {
-            "name": "Holistic_Evaluator",
-            "system_message": """You are Professor Sharma, a supportive Assistant Professor in Computer Science with 10 years of expertise, acting as a Holistic Evaluator.
-
-Your evaluation priorities:
-- Appreciating the OVERALL EFFORT demonstrated in the answer
-- Recognizing attempts to integrate multiple concepts, even if connections are imperfect
-- Valuing clarity of expression, even if technical precision is lacking
-- Acknowledging attempts at critical thinking, even if analysis is incomplete
-- Finding the educational value in each answer
-
-You are EXTREMELY LENIENT in your holistic assessment. When evaluating, look primarily for evidence of effort and engagement with the material. Award grace marks generously (at least 70% of allocated marks) for any sincere attempt that shows the student has engaged with the subject, regardless of technical accuracy."""
-        },
-        "Consensus_Evaluator": {
-            "name": "Consensus_Evaluator",
-            "system_message": """You are Professor Sharma, a supportive Assistant Professor in Computer Science with 10 years of expertise, responsible for facilitating the final consensus after all three evaluators have provided their perspectives.
-
-Your task is to:
-1. Review the evaluations from the Theoretical, Practical, and Holistic perspectives
-2. Identify areas where the student deserves the benefit of the doubt
-3. Always choose the MOST GENEROUS interpretation of the student's work
-4. Determine a final consensus grade that leans toward the HIGHEST proposed grade
-5. Provide structured feedback that:
-   - Emphasizes strengths and potential in the answer
-   - Frames areas needing improvement as opportunities for growth
-   - Clearly explains how grace marks were applied
-   - Recognizes effort and engagement above technical perfection
-
-In cases of doubt or disagreement between evaluators, ALWAYS default to the more generous interpretation. Ensure that any student who has made a genuine attempt receives at least 70% of the available marks. Your final evaluation should be encouraging and supportive, focusing on future improvement rather than current deficiencies."""
+        "evaluationType": "None",
+        "totalQuestions": 0,
+        "processingStats": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "api_requests": 0
         }
     }
 
-def evaluate_qa_pairs(qa_pairs, totalMarks=100):
-    """
-    Evaluate a set of question-answer pairs using multi-agent evaluation.
-    
-    Args:
-        qa_pairs (list): List of question-answer pairs to evaluate
-        totalMarks (int): Total marks for the exam (default: 100)
-        
-    Returns:
-        dict: Evaluation results
-    """
-    start_time = time.time()
-    logger.info(f"Starting evaluation of {len(qa_pairs)} Q&A pairs")
-    
-    gemini_model = get_gemini_model()
-    
-    # Initialize professor personas
-    professors = get_professors()
-    
-    total_score = 0
-    max_total_score = 0
-    evaluations = []
-    
-    # Process each Q&A pair with the multi-agent system
-    for item in qa_pairs:
-        question_num = item.get('questionNumber', 0)
-        question_text = item.get('questionText', '')
-        max_marks = item.get('maxMarks', 10)
-        answer = item.get('answer', '')
-        
-        if not answer:
-            # Skip empty answers with zero score
-            evaluations.append({
-                'questionNumber': question_num,
-                'questionText': question_text,
-                'score': 0,
-                'maxMarks': max_marks,
-                'rationale': "No answer provided.",
-                'studentAnswer': answer
-            })
-            max_total_score += max_marks
-            continue
-        
-        max_total_score += max_marks
-        
-        logger.info(f"Evaluating question {question_num}")
-        
-        # Step 1: Individual Evaluations from different professor personas
-        evaluation_results = {}
-        
-        for evaluator_key in ["Theoretical_Evaluator", "Practical_Evaluator", "Holistic_Evaluator"]:
-            evaluator = professors[evaluator_key]
-            
-            # Create evaluation prompt for this persona
-            eval_prompt = f"""
-            You are {evaluator['name']}, evaluating a student's answer.
-            
-            QUESTION {question_num} [{max_marks} marks]:
-            {question_text}
-            
-            STUDENT'S ANSWER:
-            {answer}
-            
-            EVALUATION INSTRUCTIONS:
-            1. Identify the key points required by the question from your evaluator perspective.
-            2. List which of these points are addressed in the student's answer.
-            3. Provide your evaluation with a proposed grade (out of {max_marks}) and clear rationale.
-            
-            Format your response as:
-            
-            ## {evaluator['name']} Evaluation
-            
-            **Key Points Required:**
-            - [list key points]
-            
-            **Points Addressed:**
-            - [list addressed points]
-            
-            **Evaluation:**
-            [your evaluation with rationale]
-            
-            **Proposed Grade:** [X] out of {max_marks}
-            """
-            
-            try:
-                response = gemini_model.generate_content(eval_prompt)
-                evaluation_results[evaluator_key] = response.text if hasattr(response, 'text') else ""
-                logger.info(f"Completed {evaluator_key} evaluation for question {question_num}")
-                
-                # Add a pause to prevent rate limiting
-                time.sleep(1)
-            except Exception as e:
-                logger.error(f"Error in {evaluator_key} evaluation: {e}")
-                evaluation_results[evaluator_key] = f"## {evaluator['name']} Evaluation\n\n**Error:** {str(e)}\n\n**Proposed Grade:** 0 out of {max_marks}"
-        
-        # Step 2: Consensus Evaluation
-        consensus_evaluator = professors["Consensus_Evaluator"]
-        
-        # Extract proposed scores for reference
-        theoretical_score_match = re.search(r"\*\*Proposed Grade:\*\* (\d+(?:\.\d+)?)", evaluation_results["Theoretical_Evaluator"])
-        practical_score_match = re.search(r"\*\*Proposed Grade:\*\* (\d+(?:\.\d+)?)", evaluation_results["Practical_Evaluator"])
-        holistic_score_match = re.search(r"\*\*Proposed Grade:\*\* (\d+(?:\.\d+)?)", evaluation_results["Holistic_Evaluator"])
-        
-        theoretical_score = theoretical_score_match.group(1) if theoretical_score_match else "N/A"
-        practical_score = practical_score_match.group(1) if practical_score_match else "N/A"
-        holistic_score = holistic_score_match.group(1) if holistic_score_match else "N/A"
-        
-        consensus_prompt = f"""
-        You are {consensus_evaluator['name']}, facilitating a final consensus evaluation.
-        
-        QUESTION {question_num} [{max_marks} marks]:
-        {question_text}
-        
-        STUDENT'S ANSWER:
-        {answer}
-        
-        EVALUATIONS FROM DIFFERENT PERSPECTIVES:
-        
-        {evaluation_results["Theoretical_Evaluator"]}
-        
-        {evaluation_results["Practical_Evaluator"]}
-        
-        {evaluation_results["Holistic_Evaluator"]}
-        
-        CONSENSUS INSTRUCTIONS:
-        1. Review all three evaluations
-        2. Identify areas of agreement and disagreement
-        3. Determine a final consensus grade that is generous toward the student
-        4. Provide a clear rationale for your assessment directly related to the student's answer
-        5. Focus on what the student did well and what could be improved
-        
-        Format your response as:
-        
-        ## Question {question_num}:
-        
-        **Score:** [X] out of {max_marks}
-        
-        **Individual Scores:**
-        - Theoretical: {theoretical_score}/{max_marks}
-        - Practical: {practical_score}/{max_marks}
-        - Holistic: {holistic_score}/{max_marks}
-        
-        **Consensus Rationale:**
-        [your consensus rationale, be generous and supportive, directly addressing the student's answer]
-        
-        **Strengths:**
-        - [strength 1 directly from the student's answer]
-        - [strength 2 directly from the student's answer]
-        
-        **Improvement Opportunities:**
-        - [specific improvement 1 related to the student's answer]
-        - [specific improvement 2 related to the student's answer]
-        """
-        
-        try:
-            consensus_response = gemini_model.generate_content(consensus_prompt)
-            consensus_text = consensus_response.text if hasattr(consensus_response, 'text') else ""
-            
-            # Extract the final score
-            score_match = re.search(r"\*\*Score:\*\* (\d+(?:\.\d+)?)", consensus_text)
-            if score_match:
-                try:
-                    score = float(score_match.group(1))
-                except ValueError:
-                    score = 0
-            else:
-                score = 0
-            
-            total_score += score
-            
-            # Extract the rationale
-            rationale_match = re.search(r"\*\*Consensus Rationale:\*\*([\s\S]*?)(?:\*\*Strengths:|$)", consensus_text)
-            rationale = rationale_match.group(1).strip() if rationale_match else "Assessment completed."
-            
-            evaluations.append({
-                'questionNumber': question_num,
-                'questionText': question_text,
-                'studentAnswer': answer,
-                'score': score,
-                'maxMarks': max_marks,
-                'rationale': rationale,
-                'evaluation': consensus_text
-            })
-            
-            logger.info(f"Completed consensus evaluation for question {question_num}, score: {score}/{max_marks}")
-            
-            # Add a pause to prevent rate limiting
-            time.sleep(1)
-        except Exception as e:
-            logger.error(f"Error in consensus evaluation: {e}")
-            evaluations.append({
-                'questionNumber': question_num,
-                'questionText': question_text,
-                'score': 0,
-                'maxMarks': max_marks,
-                'rationale': f"Error in evaluation: {str(e)}",
-                'evaluation': "Evaluation failed due to an error.",
-                'studentAnswer': answer
-            })
-    
-    # Calculate overall percentage and grade
-    percentage = round((total_score / max_total_score) * 100) if max_total_score > 0 else 0
-    
-    # Determine grade based on percentage
-    if percentage >= 90:
-        grade = "A+"
-    elif percentage >= 80:
-        grade = "A"
-    elif percentage >= 70:
-        grade = "B+"
-    elif percentage >= 60:
-        grade = "B"
-    elif percentage >= 50:
-        grade = "C"
-    else:
-        grade = "F"
-    
-    # Normalize the total score to the specified totalMarks
-    normalized_score = int((total_score / max_total_score * totalMarks) if max_total_score > 0 else 0)
-    
-    evaluation_result = {
-        'evaluations': evaluations,
-        'totalScore': int(total_score),
-        'maxTotalScore': int(max_total_score),
-        'percentage': int((total_score / max_total_score * 100) if max_total_score > 0 else 0),
-        'normalizedScore': normalized_score,
-        'totalMarks': totalMarks,
-        'grade': grade
-    }
-    
-    elapsed_time = time.time() - start_time
-    logger.info(f"Completed evaluation in {elapsed_time:.2f} seconds, overall score: {total_score}/{max_total_score} ({percentage}%, {grade})")
-    
-    return evaluation_result
-
-def generate_evaluation_report(evaluation_result):
-    """
-    Generate a detailed markdown report from the evaluation results.
-    
-    Args:
-        evaluation_result (dict): Evaluation results dictionary
-        
-    Returns:
-        str: Markdown formatted evaluation report
-    """
-    total_score = evaluation_result.get('totalScore', 0)
-    max_total_score = evaluation_result.get('maxTotalScore', 0)
-    percentage = evaluation_result.get('percentage', 0)
-    grade = evaluation_result.get('grade', 'F')
-    normalized_score = evaluation_result.get('normalizedScore', 0)
-    total_marks = evaluation_result.get('totalMarks', 100)
-    evaluations = evaluation_result.get('evaluations', [])
-    
-    md = "# Evaluation Report\n\n"
-    
-    # Overall summary
-    md += "## Overall Summary\n\n"
-    md += f"**Raw Score:** {total_score}/{max_total_score}\n\n"
-    md += f"**Normalized Score:** {normalized_score}/{total_marks}\n\n"
-    md += f"**Percentage:** {percentage}%\n\n"
-    md += f"**Grade:** {grade}\n\n"
-    
-    # Individual question evaluations
-    md += "## Detailed Assessments\n\n"
-    
-    for eval_item in evaluations:
-        q_num = eval_item.get('questionNumber', 0)
-        q_text = eval_item.get('questionText', '')
-        student_answer = eval_item.get('studentAnswer', '')
-        score = eval_item.get('score', 0)
-        max_marks = eval_item.get('maxMarks', 0)
-        rationale = eval_item.get('rationale', '')
-        full_evaluation = eval_item.get('evaluation', '')
-        
-        # Question text and number with marks
-        md += f"### Question {q_num}: {q_text} [{max_marks} marks]\n\n"
-        
-        # Student's answer - format based on content
-        md += "**Student's Answer:**\n\n"
-        
-        # If the answer is empty or "No answer provided"
-        if not student_answer or student_answer.strip() == "No answer provided":
-            md += "_No answer provided_\n\n"
-        # If the answer appears to be code, format it as code
-        elif any(marker in student_answer.lower() for marker in ['class ', 'int ', 'void ', 'function', 'def ', '#include']):
-            md += f"```cpp\n{student_answer}\n```\n\n"
-        # Otherwise, format it as regular text
-        else:
-            md += f"{student_answer}\n\n"
-        
-        # Score
-        md += f"**Score:** {score}/{max_marks}\n\n"
-        
-        if full_evaluation:
-            # Use the full consensus evaluation if available
-            # Remove the question header and score as we already added it
-            clean_eval = re.sub(r'^## Question \d+:.+?$', '', full_evaluation, flags=re.MULTILINE).strip()
-            clean_eval = re.sub(r'^\*\*Score:\*\*.*$', '', clean_eval, flags=re.MULTILINE).strip()
-            md += f"{clean_eval}\n\n"
-        else:
-            # Fallback to simple rationale
-            md += f"**Rationale:** {rationale}\n\n"
-        
-        md += "---\n\n"
-    
-    return md
-
-def evaluate_and_generate_report(qa_pairs, totalMarks=100):
-    """
-    Evaluate Q&A pairs and generate a comprehensive report.
-    
-    Args:
-        qa_pairs (list): List of Q&A pairs to evaluate
-        totalMarks (int): Total marks for the exam (default: 100)
-        
-    Returns:
-        str: Markdown formatted evaluation report
-    """
-    # Evaluate the Q&A pairs
-    evaluation_result = evaluate_qa_pairs(qa_pairs, totalMarks)
-    
-    # Generate the report
-    report = generate_evaluation_report(evaluation_result)
-    
-    return report 
+def get_evaluation_stats():
+    """Get global evaluation statistics"""
+    return {
+        "total_input_tokens": overall_run_input_tokens,
+        "total_output_tokens": overall_run_output_tokens,
+        "total_api_requests": overall_run_api_requests,
+        "sheets_evaluated": overall_run_sheets_evaluated
+    } 

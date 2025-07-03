@@ -4,7 +4,7 @@ import { Button } from "@/components/Button";
 import { Input } from "@/components/Input";
 import { Textarea } from "@/components/Textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Mail, MapPin, Phone, Send } from "lucide-react";
+import { Mail, Phone, Send } from "lucide-react";
 
 const Contact = () => {
   const { toast } = useToast();
@@ -50,7 +50,7 @@ const Contact = () => {
           <div className="max-w-3xl mx-auto text-center">
             <h1 className="text-4xl md:text-5xl font-bold mb-6 animate-fade-in">Get in Touch</h1>
             <p className="text-xl text-muted-foreground mb-10 animate-fade-in" style={{ animationDelay: "0.2s" }}>
-              Have questions about EduAI? Our team is here to help. Reach out to us and we'll respond as soon as possible.
+              Have questions about Autograder AI? Our team is here to help. Reach out to us and we'll respond as soon as possible.
             </p>
           </div>
         </div>
@@ -59,46 +59,34 @@ const Contact = () => {
       {/* Contact Details Section */}
       <section className="py-16">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-16">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-16 max-w-4xl mx-auto">
             <div className="bg-background rounded-xl p-8 shadow-sm border border-border/50 text-center animate-slide-in-up">
               <div className="inline-flex items-center justify-center bg-accent/10 p-4 rounded-full mb-6">
-                <MapPin className="h-6 w-6 text-accent" />
+                <Mail className="h-6 w-6 text-accent" />
               </div>
-              <h3 className="text-xl font-semibold mb-3">Our Office</h3>
-              <p className="text-muted-foreground">
-                123 Innovation Way<br />
-                Tech City, TC 10101<br />
-                United States
+              <h3 className="text-xl font-semibold mb-4">Email Us</h3>
+              <p className="text-gray-700 dark:text-gray-300 mb-2">
+                General Inquiries & Support:
+              </p>
+              <p className="text-lg">
+                <a href="mailto:sujit.sarkar6112@gmail.com" className="text-accent hover:underline font-medium">
+                  sujit.sarkar6112@gmail.com
+                </a>
               </p>
             </div>
             
             <div className="bg-background rounded-xl p-8 shadow-sm border border-border/50 text-center animate-slide-in-up" style={{ animationDelay: "0.2s" }}>
               <div className="inline-flex items-center justify-center bg-accent/10 p-4 rounded-full mb-6">
-                <Mail className="h-6 w-6 text-accent" />
-              </div>
-              <h3 className="text-xl font-semibold mb-3">Email Us</h3>
-              <p className="text-muted-foreground mb-2">
-                General Inquiries:<br />
-                <a href="mailto:hello@eduai.com" className="text-accent hover:underline">hello@eduai.com</a>
-              </p>
-              <p className="text-muted-foreground">
-                Support:<br />
-                <a href="mailto:support@eduai.com" className="text-accent hover:underline">support@eduai.com</a>
-              </p>
-            </div>
-            
-            <div className="bg-background rounded-xl p-8 shadow-sm border border-border/50 text-center animate-slide-in-up" style={{ animationDelay: "0.4s" }}>
-              <div className="inline-flex items-center justify-center bg-accent/10 p-4 rounded-full mb-6">
                 <Phone className="h-6 w-6 text-accent" />
               </div>
-              <h3 className="text-xl font-semibold mb-3">Call Us</h3>
-              <p className="text-muted-foreground mb-2">
-                Main Office:<br />
-                <a href="tel:+15551234567" className="text-accent hover:underline">+1 (555) 123-4567</a>
+              <h3 className="text-xl font-semibold mb-4">Call Us</h3>
+              <p className="text-gray-700 dark:text-gray-300 mb-2">
+                Phone Support:
               </p>
-              <p className="text-muted-foreground">
-                Customer Support:<br />
-                <a href="tel:+15557891234" className="text-accent hover:underline">+1 (555) 789-1234</a>
+              <p className="text-lg">
+                <a href="tel:+919390573209" className="text-accent hover:underline font-medium">
+                  +91 9390573209
+                </a>
               </p>
             </div>
           </div>
@@ -205,21 +193,7 @@ const Contact = () => {
         </div>
       </section>
       
-      {/* Map Section */}
-      <section className="py-16">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="rounded-xl overflow-hidden shadow-sm border border-border/50 animate-slide-in-up h-[400px]">
-            {/* Placeholder for map - in a real app, you'd use Google Maps or similar */}
-            <div className="bg-accent/10 w-full h-full flex items-center justify-center">
-              <div className="text-center">
-                <MapPin className="h-12 w-12 text-accent mb-4 mx-auto" />
-                <p className="text-lg font-medium">Interactive Map Would Be Here</p>
-                <p className="text-muted-foreground">123 Innovation Way, Tech City, TC 10101</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+
     </div>
   );
 };

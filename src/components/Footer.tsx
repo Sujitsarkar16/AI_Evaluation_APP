@@ -1,6 +1,6 @@
 
 import { Link } from "react-router-dom";
-import { Brain, Mail, MapPin, Phone } from "lucide-react";
+import { Brain, Mail, Phone } from "lucide-react";
 
 const Footer = () => {
   return (
@@ -10,10 +10,10 @@ const Footer = () => {
           <div>
             <div className="flex items-center mb-4">
               <Brain className="h-6 w-6 text-accent mr-2" />
-              <span className="font-bold text-lg">EduAI</span>
+              <span className="font-bold text-lg">Autograder AI</span>
             </div>
             <p className="text-muted-foreground mb-4 max-w-md">
-              Transforming education through artificial intelligence. Our platform makes learning more personalized, engaging, and effective.
+              Transforming assessment through artificial intelligence. Our platform makes grading more accurate, efficient, and insightful for educators.
             </p>
             <div className="flex space-x-4">
               <a 
@@ -70,16 +70,12 @@ const Footer = () => {
             <h3 className="text-sm font-semibold tracking-wide uppercase mb-4">Contact</h3>
             <ul className="space-y-3">
               <li className="flex">
-                <MapPin className="h-5 w-5 text-muted-foreground mr-3 flex-shrink-0" />
-                <span className="text-muted-foreground">123 Innovation Way, Tech City, TC 10101</span>
+                            <Mail className="h-5 w-5 text-gray-700 dark:text-gray-300 mr-3 flex-shrink-0" />
+            <span className="text-gray-700 dark:text-gray-300">sujit.sarkar6112@gmail.com</span>
               </li>
               <li className="flex">
-                <Phone className="h-5 w-5 text-muted-foreground mr-3 flex-shrink-0" />
-                <span className="text-muted-foreground">+1 (555) 123-4567</span>
-              </li>
-              <li className="flex">
-                <Mail className="h-5 w-5 text-muted-foreground mr-3 flex-shrink-0" />
-                <span className="text-muted-foreground">hello@eduai.com</span>
+                            <Phone className="h-5 w-5 text-gray-700 dark:text-gray-300 mr-3 flex-shrink-0" />
+            <span className="text-gray-700 dark:text-gray-300">+91 9390573209</span>
               </li>
             </ul>
           </div>
@@ -87,7 +83,7 @@ const Footer = () => {
         
         <div className="border-t border-border/40 mt-12 pt-8 flex flex-col md:flex-row justify-between items-center">
           <p className="text-sm text-muted-foreground">
-            © {new Date().getFullYear()} EduAI. All rights reserved.
+            © {new Date().getFullYear()} Autograder AI. All rights reserved.
           </p>
           <div className="flex space-x-6 mt-4 md:mt-0">
             <Link to="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors duration-200">

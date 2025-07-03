@@ -1,146 +1,192 @@
-# AI EduCraft Portal Backend
+# AI Evaluation Backend
 
-This is the Flask backend for the AI EduCraft Portal, a learning management system application that includes:
+Clean, well-organized Flask backend for the AI Evaluation Application with modular architecture, proper configuration management, and comprehensive documentation.
 
-1. OCR processing for extracting text from images
-2. Q&A mapping to identify questions and match them with answers
-3. Evaluation of the mapped Q&A pairs
+## 🏗️ Architecture Overview
 
-## Setup Instructions
-
-### 1. Create a virtual environment (recommended)
-
-```bash
-# For Windows
-python -m venv venv
-venv\Scripts\activate
-
-# For macOS/Linux
-python3 -m venv venv
-source venv/bin/activate
+### **Organized Structure**
+```
+backend/
+├── app.py                     # Main application entry point
+├── config.py                  # Centralized configuration management
+├── requirements.txt           # Python dependencies
+├── routes/                    # Organized route modules
+│   ├── __init__.py
+│   ├── auth_routes.py        # Authentication & user management
+│   └── upload_routes.py      # File upload & queue management
+├── mongoDB/                   # Database layer
+│   ├── __init__.py
+│   ├── db_config.py          # Database configuration & connection
+│   ├── auth.py               # Authentication logic
+│   ├── models.py             # Data models
+│   └── init_db.py            # Database initialization
+├── ocr/                      # OCR processing module
+├── qna_mapping/              # Question-Answer mapping
+├── evaluation/               # AI evaluation engine
+├── question_paper/           # Question paper parsing
+├── uploads/                  # File storage directory
+└── backup/                   # Backup & archived files
 ```
 
-### 2. Install dependencies
+## 🚀 Quick Start
 
+### **1. Environment Setup**
 ```bash
+# Install dependencies
 pip install -r requirements.txt
+
+# Create environment file
+cp ../env-template.txt .env
+
+# Configure your environment variables (see env-template.txt)
+# Replace with your actual values
 ```
 
-### 3. Set up environment variables
-
-Create a `.env` file in the backend directory with the following variables:
-
-```
-# Required for optional Gemini AI integration
-GEMINI_API_KEY=your_gemini_api_key
-
-# Optional MongoDB connection settings if using database
-MONGO_URI=your_mongodb_connection_string
-```
-
-### 4. Run the application
-
+### **2. Start the Application**
 ```bash
 python app.py
 ```
 
-The server will start at `http://localhost:5000`
+The server will start on `http://localhost:5000`
 
-## API Endpoints
+## 📋 API Endpoints
 
-The backend exposes the following endpoints:
+### **Authentication (`/api/auth`)**
+- `POST /register` - Register new user
+- `POST /login` - User login
+- `GET /profile` - Get user profile
+- `PUT /profile` - Update user profile
+- `POST /change-password` - Change password
+- `POST /upload-avatar` - Upload profile picture
+- `GET /users` - Get all users (admin only)
 
-### 1. OCR Processing
 
-**Endpoint:** `/api/ocr`
-**Method:** POST
-**Description:** Extracts text from uploaded images using OCR
+### **Upload Queue (`/api/uploads`)**
+- `POST /batch` - Upload multiple PDFs (max 10 files)
+- `GET /` - List uploaded files with filtering
+- `GET /:id` - Get specific upload details
+- `DELETE /:id` - Delete uploaded file
+- `POST /:id/evaluate` - Start evaluation process
+- `GET /stats` - Upload statistics
 
-**Request:**
-- Form data with a file upload (supported formats: PNG, JPG, JPEG, PDF)
+### **System**
+- `GET /api/health` - Health check
+- `GET /api/info` - System information
+- `GET /uploads/:filename` - Serve uploaded files
 
-**Response:**
-```json
-{
-  "text": "Extracted text from the image"
-}
+## 🛠️ Configuration
+
+### **Environment Variables**
+```bash
+# Flask Configuration
+SECRET_KEY=your-secret-key
+DEBUG=False
+HOST=0.0.0.0
+PORT=5000
+
+# Database
+MONGODB_URI=your_mongodb_connection_string
+DATABASE_NAME=LMS_DATA
+
+# API Keys
+GOOGLE_API_KEY=your-gemini-api-key
+GEMINI_API_KEY=alternative-gemini-key
+
+# JWT
+JWT_SECRET=jwt-secret-key
+JWT_ALGORITHM=HS256
+JWT_EXPIRATION_HOURS=24
+
+# File Upload
+UPLOAD_FOLDER=uploads
+MAX_CONTENT_LENGTH=16777216  # 16MB
+
+# CORS
+CORS_ORIGINS=*
+
+# Logging
+LOG_LEVEL=INFO
 ```
 
-### 2. Q&A Mapping
+## 💾 Database
 
-**Endpoint:** `/api/mapping`
-**Method:** POST
-**Description:** Maps questions to their corresponding answers in the extracted text
+### **MongoDB Collections**
+- `users` - User accounts and profiles
+- `upload_queue` - File upload queue
+- `evaluations` - AI evaluation results
+- `question_papers` - Question paper templates
+- `courses` - Course information
+- `classes` - Class management
+- `assignments` - Assignment data
+- `notifications` - User notifications
+- `analytics` - Analytics data
 
-**Request:**
-```json
-{
-  "text": "Extracted text containing questions and answers",
-  "question_paper": "Optional question paper text for better matching"
-}
-```
+## 🔐 Security Features
 
-**Response:**
-```json
-{
-  "qa_pairs": [
-    {
-      "questionNumber": 1,
-      "questionText": "What is...",
-      "maxMarks": 10,
-      "answer": "The answer is..."
-    },
-    ...
-  ]
-}
-```
+### **Authentication & Authorization**
+- JWT-based authentication
+- Role-based access control (admin, student, teacher)
+- Password hashing with bcrypt
+- Token expiration and refresh
 
-### 3. Evaluation
+### **File Security**
+- File type validation (PDF only for evaluations)
+- File size limits (16MB max)
+- Secure filename generation
+- Isolated file storage
 
-**Endpoint:** `/api/evaluate`
-**Method:** POST
-**Description:** Evaluates the quality of the mapped Q&A pairs
+## 🧩 Core Modules
 
-**Request:**
-```json
-{
-  "qa_pairs": [
-    {
-      "questionNumber": 1,
-      "questionText": "What is...",
-      "maxMarks": 10,
-      "answer": "The answer is..."
-    },
-    ...
-  ]
-}
-```
+### **OCR Processing**
+- Google Gemini Vision API integration
+- PDF and image text extraction
+- Handwriting recognition
+- Multi-language support
 
-**Response:**
-```json
-{
-  "evaluation": {
-    "evaluations": [
-      {
-        "questionNumber": 1,
-        "questionText": "What is...",
-        "score": 8,
-        "maxMarks": 10,
-        "rationale": "Substantial answer provided with good detail."
-      },
-      ...
-    ],
-    "totalScore": 25,
-    "maxTotalScore": 30,
-    "percentage": 83,
-    "grade": "A",
-    "markdownReport": "# Evaluation Report\n\n..."
-  }
-}
-```
+### **Q&A Mapping**
+- Intelligent question-answer pairing
+- Context-aware mapping algorithms
+- Confidence scoring
+- Manual correction support
 
-## Additional Notes
+### **AI Evaluation**
+- Rubric-based assessment
+- Natural language evaluation
+- Scoring algorithms
+- Detailed feedback generation
 
-- The OCR functionality uses Tesseract OCR as a fallback, but will first attempt to use Google's Gemini API if available.
-- For the Gemini API to work, you need to provide a valid API key in the `.env` file.
-- The backend includes robust error handling and will automatically fall back to simpler methods if advanced AI capabilities are not available. 
+## 📊 Features
+
+### **Upload Queue Management**
+- Batch PDF upload (up to 10 files)
+- Real-time status tracking
+- File validation and security
+- Queue statistics and monitoring
+
+### **User Management**
+- Registration and authentication
+- Profile management with avatars
+- Role-based permissions
+
+## 🔧 Development
+
+### **Code Organization**
+- Modular route handlers
+- Centralized configuration
+- Clean separation of concerns
+- Comprehensive error handling
+
+### **Clean Architecture**
+- Application factory pattern
+- Blueprint-based routes
+- Configuration management
+- Proper logging setup
+
+---
+
+## 📞 Support
+
+For issues, questions, or contributions, please refer to the main project documentation.
+
+**Version**: 1.0.0  
+**Last Updated**: December 2024 

@@ -1,0 +1,59 @@
+# ===========================================
+# AI EVALUATION APP - ENVIRONMENT VARIABLES TEMPLATE
+# ===========================================
+# 
+# INSTRUCTIONS:
+# 1. Copy this content to a new file named ".env" in the root directory
+# 2. Replace the placeholder values with your actual configuration  
+# 3. Never commit the .env file to version control
+# 4. Keep your API keys and secrets secure
+# 5. Use strong, unique secret keys for production
+#
+# ===========================================
+
+# Google Gemini API Configuration
+# Get your API key from: https://aistudio.google.com/app/apikey
+GOOGLE_API_KEY=your_google_gemini_api_key_here
+GEMINI_API_KEY=your_google_gemini_api_key_here
+
+# MongoDB Configuration
+# Replace with your actual MongoDB connection string
+MONGODB_URI=mongodb+srv://sarkarsujit9052:Amazing1@productioncluster.gbf9m.mongodb.net/
+
+# Flask Configuration
+FLASK_ENV=development
+FLASK_DEBUG=True
+FLASK_SECRET_KEY=aafb939274d1e5108abe06da3e4a49d4ec651efe90de2b788dc5d25fa0a68b72
+
+# JWT Configuration
+JWT_SECRET=7c3e8fbc53f354c87b742f6b608787eb7458efc4ffb643529d5ae316260731fd
+
+# File Upload Configuration
+MAX_CONTENT_LENGTH=16777216
+UPLOAD_FOLDER=uploads
+
+# API Configuration
+API_BASE_URL=http://localhost:5000
+
+# CORS Configuration
+CORS_ORIGINS=http://localhost:3000,http://localhost:5173
+
+# Logging Configuration
+LOG_LEVEL=INFO
+
+# ===========================================
+# EXAMPLE USAGE:
+# ===========================================
+# To create your .env file, run these commands in the root directory:
+# 
+# Windows (PowerShell):
+# Copy-Item "env-template.txt" ".env"
+# 
+# Windows (Command Prompt):
+# copy env-template.txt .env
+# 
+# macOS/Linux:
+# cp env-template.txt .env
+# 
+# Then edit the .env file with your actual values.
+# =========================================== 

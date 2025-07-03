@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Upload, Plus, Pencil, Trash2, X, Brain } from 'lucide-react';
+import { FileText, Plus, Pencil, Trash2, X, Brain, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
 import { Textarea } from '@/components/Textarea';
@@ -10,10 +10,26 @@ import { useNavigate } from 'react-router-dom';
 // Update API URL to point to Flask backend
 const API_URL = 'http://localhost:5000/api';
 
+// Configure axios with timeout and auth
+const getAxiosConfig = () => {
+  const token = localStorage.getItem('authToken');
+  const config: any = {
+    timeout: 10000, // 10 seconds timeout
+  };
+  
+  if (token) {
+    config.headers = {
+      'Authorization': `Bearer ${token}`
+    };
+  }
+  
+  return config;
+};
+
+const axiosConfig = getAxiosConfig();
+
 const QuestionPapers = () => {
   const [isProcessing, setIsProcessing] = useState(false);
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [fileName, setFileName] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [questionPaperTitle, setQuestionPaperTitle] = useState('');
   const [parsedQuestions, setParsedQuestions] = useState([]);
@@ -23,9 +39,11 @@ const QuestionPapers = () => {
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPaper, setCurrentPaper] = useState(null);
-  const fileInputRef = React.useRef(null);
+  const aiParseInputRef = React.useRef(null);
   const [viewModalOpen, setViewModalOpen] = useState(false);
   const [viewingPaper, setViewingPaper] = useState(null);
+  const [aiParseResult, setAiParseResult] = useState(null);
+  const [showParsePreview, setShowParsePreview] = useState(false);
   const navigate = useNavigate();
   
   // Fetch question papers from API
@@ -36,300 +54,65 @@ const QuestionPapers = () => {
   const fetchQuestionPapers = async () => {
     try {
       setIsLoading(true);
-      const response = await axios.get(`${API_URL}/question-papers`);
-      setQuestionPapers(response.data);
       setError(null);
+      const response = await axios.get(`${API_URL}/question-papers`, getAxiosConfig());
+      
+      // Extract question_papers array from the response
+      if (response.data && response.data.success && Array.isArray(response.data.question_papers)) {
+        setQuestionPapers(response.data.question_papers);
+      } else {
+        setQuestionPapers([]);
+      }
     } catch (err) {
       console.error('Error fetching question papers:', err);
-      setError('Failed to load question papers. Please try again later.');
+      let errorMessage = 'Failed to load question papers. ';
+      
+      if (err.code === 'ECONNABORTED') {
+        errorMessage += 'Request timed out. Please check if the backend server is running.';
+      } else if (err.code === 'ERR_NETWORK' || err.message.includes('Network Error')) {
+        errorMessage += 'Backend server is not available. Please start the backend server using: cd backend ; python app.py';
+      } else if (err.response) {
+        errorMessage += `Server error: ${err.response.status} ${err.response.statusText}`;
+      } else {
+        errorMessage += 'Please try again later.';
+      }
+      
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
   };
   
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    
-    // Reset states
-    setSelectedFile(file);
-    setFileName(file.name);
-    setParsedQuestions([]);
-    
-    // Check file size (max 10MB)
-    if (file.size > 10 * 1024 * 1024) {
-      alert('File size exceeds maximum limit of 10MB');
-      return;
-    }
-    
-    // Process text-based files (.txt, .md, .markdown)
-    const fileExt = file.name.split('.').pop().toLowerCase();
-    if (['txt', 'md', 'markdown'].includes(fileExt)) {
-      const reader = new FileReader();
-      
-      reader.onload = (event) => {
-        try {
-          const content = event.target.result;
-          const parsedData = parseQuestionPaper(content);
-          
-          if (parsedData.length > 0) {
-            console.log(`Successfully parsed ${parsedData.length} questions`);
-            // Set a default title based on filename if not already set
-            if (!questionPaperTitle) {
-              setQuestionPaperTitle(file.name.replace(/\.[^/.]+$/, ''));
-            }
-          } else {
-            console.warn('No questions found in the file');
-          }
-        } catch (error) {
-          console.error("Error parsing file:", error);
-          alert("Failed to parse the file. Please check the format and try again.");
-        }
-      };
-      
-      reader.onerror = () => {
-        console.error("File read error");
-        alert("Error reading the file. Please try again.");
-      };
-      
-      reader.readAsText(file);
-    }
-  };
-  
-  const parseQuestionPaper = (content) => {
-    if (!content || typeof content !== 'string') {
-      console.error('Invalid content for parsing');
-      return [];
-    }
-    
-    // Split content by lines and remove empty lines
-    const lines = content.split('\n').map(line => line.trim()).filter(Boolean);
-    
-    const questions = [];
-    let currentMainQuestion = null;
-    let currentSubQuestion = null;
-    let isOrAlternative = false;
-    
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
-      
-      // Skip lines that only contain "or" (centered alternatives)
-      if (/^\s*or\s*$/i.test(line)) {
-        isOrAlternative = true;
-        continue;
-      }
-      
-      // Check for main question pattern: Q1), **Q1)**, etc.
-      const mainQuestionRegex = /\*?\*?Q(\d+)\)?\*?\*?/i;
-      const mainQuestionMatch = line.match(mainQuestionRegex);
-      
-      if (mainQuestionMatch) {
-        // If we have a main question match, create a new question group
-        const questionNumber = parseInt(mainQuestionMatch[1]);
-        
-        // If this is an "or" alternative to the previous question
-        if (isOrAlternative && questions.length > 0) {
-          // Mark the previous question as having an alternative
-          const prevQuestion = questions[questions.length - 1];
-          prevQuestion.hasAlternative = true;
-          prevQuestion.alternativeNumber = questionNumber;
-          
-          // Store the alternative info
-          currentMainQuestion = {
-            id: questionNumber,
-            text: line.replace(mainQuestionMatch[0], '').trim(),
-            isAlternativeTo: prevQuestion.id,
-            subQuestions: [],
-            marks: 0 // Will be the sum of sub-question marks
-          };
-        } else {
-          // Regular new question
-          currentMainQuestion = {
-            id: questionNumber,
-            text: line.replace(mainQuestionMatch[0], '').trim(),
-            subQuestions: [],
-            marks: 0 // Will be the sum of sub-question marks
-          };
-        }
-        
-        questions.push(currentMainQuestion);
-        isOrAlternative = false;
-        continue;
-      }
-      
-      // Check for sub-question pattern: a), b), etc.
-      const subQuestionRegex = /^([a-z])\)(.*?)(?:\[(\d+)\])?$/i;
-      const subQuestionMatch = line.match(subQuestionRegex);
-      
-      if (subQuestionMatch && currentMainQuestion) {
-        const subQuestionLetter = subQuestionMatch[1].toLowerCase();
-        let subQuestionText = subQuestionMatch[2].trim();
-        const marks = subQuestionMatch[3] ? parseInt(subQuestionMatch[3]) : 0;
-        
-        currentSubQuestion = {
-          id: subQuestionLetter,
-          text: subQuestionText,
-          marks: marks,
-          options: []
-        };
-        
-        // Add marks to main question total
-        currentMainQuestion.marks += marks;
-        
-        // Add sub-question to current main question
-        currentMainQuestion.subQuestions.push(currentSubQuestion);
-        continue;
-      }
-      
-      // Check for marks pattern at the end of a line [x]
-      const marksRegex = /\[(\d+)\]$/;
-      const marksMatch = line.match(marksRegex);
-      
-      if (marksMatch && currentSubQuestion) {
-        const marks = parseInt(marksMatch[1]);
-        // Update the sub-question's marks
-        currentSubQuestion.marks = marks;
-        
-        // Update the main question's total marks
-        currentMainQuestion.marks = currentMainQuestion.subQuestions.reduce(
-          (total, sq) => total + (sq.marks || 0), 0
-        );
-        
-        // Add text from this line (without the marks) to the sub-question
-        const textPart = line.replace(marksRegex, '').trim();
-        if (textPart && !currentSubQuestion.text.includes(textPart)) {
-          currentSubQuestion.text += ' ' + textPart;
-        }
-        continue;
-      }
-      
-      // Check for options with (or) pattern
-      if (line.toLowerCase().includes('(or)') && currentSubQuestion) {
-        const options = line.split(/\s*\(or\)\s*/).map(opt => opt.trim()).filter(Boolean);
-        if (options.length > 0) {
-          currentSubQuestion.options = options;
-        }
-        continue;
-      }
-      
-      // If none of the above, append to the current sub-question if exists
-      if (currentSubQuestion) {
-        currentSubQuestion.text += ' ' + line;
-      } 
-      // Otherwise append to main question if exists
-      else if (currentMainQuestion) {
-        currentMainQuestion.text += ' ' + line;
-      }
-    }
-    
-    // Process the questions to make them compatible with the existing format
-    const processedQuestions = [];
-    questions.forEach(mainQ => {
-      if (mainQ.subQuestions && mainQ.subQuestions.length > 0) {
-        // Convert sub-questions to individual questions
-        mainQ.subQuestions.forEach(subQ => {
-          processedQuestions.push({
-            id: `${mainQ.id}${subQ.id}`, // Format as "1a", "1b", etc.
-            text: subQ.text,
-            marks: subQ.marks,
-            options: subQ.options || [],
-            mainQuestionId: mainQ.id,
-            isSubQuestion: true,
-            hasAlternative: mainQ.hasAlternative,
-            alternativeNumber: mainQ.alternativeNumber,
-            isAlternativeTo: mainQ.isAlternativeTo
-          });
-        });
-      } else {
-        // If there are no sub-questions, add the main question as is
-        processedQuestions.push({
-          id: mainQ.id,
-          text: mainQ.text,
-          marks: mainQ.marks,
-          options: [],
-          hasAlternative: mainQ.hasAlternative,
-          alternativeNumber: mainQ.alternativeNumber,
-          isAlternativeTo: mainQ.isAlternativeTo
-        });
-      }
-    });
-    
-    // Update state with parsed questions
-    setParsedQuestions(processedQuestions);
-    return processedQuestions;
-  };
-
-  const handleUploadQuestionPaper = async () => {
-    if (!selectedFile) {
-      alert('Please select a file to upload');
-      return;
-    }
-    
-    try {
-      setIsProcessing(true);
-      
-      const formData = new FormData();
-      formData.append('file', selectedFile);
-      
-      // Use filename as title if not specified
-      const title = questionPaperTitle || selectedFile.name.replace(/\.[^/.]+$/, '');
-      formData.append('title', title);
-      
-      // Add parsed questions data if available
-      if (parsedQuestions.length > 0) {
-        formData.append('questions', JSON.stringify(parsedQuestions));
-      }
-      
-      // Send the data to the server
-      const response = await axios.post(`${API_URL}/question-papers`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
-      });
-      
-      // Refresh the question papers list
-      await fetchQuestionPapers();
-      
-      // Determine what message to show based on file type and parsing results
-      const fileExt = selectedFile.name.split('.').pop().toLowerCase();
-      const isParsableFile = ['txt', 'md', 'markdown'].includes(fileExt);
-      
-      if (isParsableFile && parsedQuestions.length > 0) {
-        // If parsed successfully, open the editor
-        setCurrentPaper(response.data);
-        setQuestionPaperTitle(response.data.title);
-        setShowCreateModal(true);
-        setCreatingNewQP(false);
-        alert(`Successfully parsed ${parsedQuestions.length} questions! You can now edit the question paper.`);
-      } else if (isParsableFile && parsedQuestions.length === 0) {
-        alert('No questions were found in the file, but it was uploaded successfully.');
-      } else {
-        alert('Question paper uploaded successfully!');
-      }
-      
-      // Reset states
-      setSelectedFile(null);
-      setFileName('');
-      
-    } catch (error) {
-      console.error('Error uploading question paper:', error);
-      alert(`Failed to upload: ${error.response?.data?.message || 'Unknown error occurred'}`);
-    } finally {
-      setIsProcessing(false);
-    }
+  const handleRetry = () => {
+    fetchQuestionPapers();
   };
   
   const handleSaveQuestionPaper = async (paperData) => {
     try {
       setIsProcessing(true);
       
+      // Check if user is authenticated
+      const token = localStorage.getItem('authToken');
+      if (!token) {
+        alert('Authentication required. Please log in to save question papers.');
+        return;
+      }
+      
+      // Log the data being sent for debugging
+      console.log('Sending question paper data:', paperData);
+      console.log('Auth config:', getAxiosConfig());
+      
       if (currentPaper && currentPaper._id) {
         // Update existing question paper
-        await axios.patch(`${API_URL}/question-papers/${currentPaper._id}`, paperData);
+        console.log('Updating existing question paper:', currentPaper._id);
+        const response = await axios.patch(`${API_URL}/question-papers/${currentPaper._id}`, paperData, getAxiosConfig());
+        console.log('Update response:', response.data);
         alert('Question paper updated successfully!');
       } else {
         // Create new question paper without file
-        await axios.post(`${API_URL}/question-papers`, paperData);
+        console.log('Creating new question paper');
+        const response = await axios.post(`${API_URL}/question-papers`, paperData, getAxiosConfig());
+        console.log('Create response:', response.data);
         alert('Question paper created successfully!');
       }
       
@@ -344,7 +127,34 @@ const QuestionPapers = () => {
       setParsedQuestions([]);
     } catch (err) {
       console.error('Error saving question paper:', err);
-      alert('Failed to save question paper. Please try again.');
+      
+      // Detailed error reporting
+      let errorMessage = 'Failed to save question paper. ';
+      
+      if (err.code === 'ECONNABORTED') {
+        errorMessage += 'Request timed out. Please check if the backend server is running.';
+      } else if (err.code === 'ERR_NETWORK' || err.message.includes('Network Error')) {
+        errorMessage += 'Backend server is not available. Please start the backend server using: cd backend && python main.py';
+      } else if (err.response) {
+        const status = err.response.status;
+        const message = err.response.data?.detail || err.response.data?.message || err.response.statusText;
+        
+        if (status === 401) {
+          errorMessage += 'Authentication required. Please log in first.';
+        } else if (status === 403) {
+          errorMessage += 'Permission denied. You may need to log in or have insufficient permissions.';
+        } else if (status === 422) {
+          errorMessage += `Invalid data: ${message}`;
+        } else if (status === 500) {
+          errorMessage += `Server error: ${message}`;
+        } else {
+          errorMessage += `Server error (${status}): ${message}`;
+        }
+      } else {
+        errorMessage += `Error: ${err.message || 'Unknown error occurred'}`;
+      }
+      
+      alert(errorMessage);
     } finally {
       setIsProcessing(false);
     }
@@ -353,7 +163,7 @@ const QuestionPapers = () => {
   const handleDeleteQuestionPaper = async (id) => {
     if (window.confirm('Are you sure you want to delete this question paper?')) {
       try {
-        await axios.delete(`${API_URL}/question-papers/${id}`);
+        await axios.delete(`${API_URL}/question-papers/${id}`, getAxiosConfig());
         alert('Question paper deleted successfully!');
         await fetchQuestionPapers();
       } catch (err) {
@@ -382,9 +192,127 @@ const QuestionPapers = () => {
     // Navigate to the evaluations page
     navigate('/dashboard/evaluations');
   };
+
+  const handleAiParseFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    // Check file size (max 16MB)
+    if (file.size > 16 * 1024 * 1024) {
+      alert('File size exceeds maximum limit of 16MB');
+      return;
+    }
+    
+    // Check file format (PDF or image)
+    const allowedExtensions = ['pdf', 'png', 'jpg', 'jpeg', 'tiff', 'bmp'];
+    const fileExt = file.name.split('.').pop().toLowerCase();
+    
+    if (!allowedExtensions.includes(fileExt)) {
+      alert('Please select a PDF or image file (PNG, JPG, JPEG, TIFF, BMP)');
+      return;
+    }
+    
+    handleAiParsing(file);
+  };
+
+  const handleAiParsing = async (file) => {
+    if (!file) return;
+    
+    setIsProcessing(true);
+    setAiParseResult(null);
+    setShowParsePreview(false);
+    
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const response = await axios.post(`${API_URL}/question-papers/parse`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+        timeout: 30000, // 30 seconds for file upload
+      });
+      
+      if (response.data.success) {
+        setAiParseResult(response.data);
+        setShowParsePreview(true);
+        setQuestionPaperTitle(file.name.replace(/\.[^/.]+$/, ''));
+        
+        // Convert parsed questions to the format expected by the UI
+        const convertedQuestions = convertAiParsedQuestions(response.data.questions);
+        setParsedQuestions(convertedQuestions);
+      } else {
+        alert('Failed to parse question paper: ' + (response.data.error || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('Error parsing question paper:', error);
+      alert('Error parsing question paper: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const convertAiParsedQuestions = (aiQuestions) => {
+    // Convert AI parsed questions to the format expected by the existing UI
+    const converted = [];
+    
+    aiQuestions.forEach((q, index) => {
+      converted.push({
+        id: q.id || `Q${index + 1}`,
+        text: q.text || '',
+        marks: q.marks || 0,
+        isSubQuestion: false,
+        mainQuestionId: q.parent_id || null,
+        options: [],
+        choice: q.choice,
+        part: q.part
+      });
+    });
+    
+    return converted;
+  };
+
+  const handleSaveAiParsedQuestions = async () => {
+    if (!aiParseResult || !questionPaperTitle.trim()) {
+      alert('Please provide a title for the question paper');
+      return;
+    }
+    
+    setIsProcessing(true);
+    
+    try {
+      const paperData = {
+        title: questionPaperTitle.trim(),
+        description: `AI-parsed question paper from ${aiParseResult.filename || 'uploaded file'}`,
+        questions: aiParseResult.questions,
+        subject: aiParseResult.metadata?.subject || "",
+        topic: aiParseResult.metadata?.topic || "",
+        difficulty: aiParseResult.metadata?.difficulty || "medium",
+        duration: aiParseResult.metadata?.duration || 120,
+        metadata: aiParseResult.metadata || {},
+        validation: aiParseResult.validation || {},
+        source: 'ai_parsed'
+      };
+      
+      await handleSaveQuestionPaper(paperData);
+      
+      // Reset states
+      setAiParseResult(null);
+      setShowParsePreview(false);
+      setParsedQuestions([]);
+      setQuestionPaperTitle('');
+      
+      alert('Question paper saved successfully!');
+    } catch (error) {
+      console.error('Error saving AI parsed questions:', error);
+      alert('Error saving question paper: ' + error.message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
   
   // Filter question papers based on search term
-  const filteredPapers = questionPapers.filter(paper => 
+  const filteredPapers = (Array.isArray(questionPapers) ? questionPapers : []).filter(paper => 
     paper.title.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -406,175 +334,145 @@ const QuestionPapers = () => {
             <Plus className="mr-2 h-4 w-4" />
             Create New
           </Button>
+
           <div className="cursor-pointer">
             <Button 
-              variant="outline" 
-              className="flex items-center w-full"
+              className="flex items-center w-full bg-purple-600 hover:bg-purple-700 text-white"
               disabled={isProcessing}
-              onClick={() => fileInputRef.current && fileInputRef.current.click()}
+              onClick={() => aiParseInputRef.current && aiParseInputRef.current.click()}
             >
-              <Upload className="mr-2 h-4 w-4" />
-              Upload Question Paper
+              <Brain className="mr-2 h-4 w-4" />
+              {isProcessing ? 'Parsing...' : 'AI Parse PDF/Image'}
             </Button>
             <input 
               type="file" 
               className="hidden" 
-              ref={fileInputRef}
-              onChange={handleFileChange}
-              accept=".txt,.md,.markdown,.pdf,.doc,.docx"
+              ref={aiParseInputRef}
+              onChange={handleAiParseFile}
+              accept=".pdf,.png,.jpg,.jpeg,.tiff,.bmp"
               disabled={isProcessing}
             />
             <p className="text-xs text-gray-500 mt-1 text-center">
-              Supports .txt, .md, .pdf, .doc, .docx
+              AI parses PDF/Image question papers
             </p>
           </div>
         </div>
       </div>
       
-      {fileName && (
-        <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center">
-              <FileText className="h-5 w-5 text-blue-600 mr-2" />
-              <span className="text-sm font-medium text-gray-800">{fileName}</span>
-              {selectedFile && ['txt', 'md', 'markdown'].includes(selectedFile.name.split('.').pop().toLowerCase()) && (
-                <span className="ml-2 text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full">
-                  Auto-parsing enabled
-                </span>
-              )}
+
+
+      {/* AI Parse Preview */}
+      {showParsePreview && aiParseResult && (
+        <div className="mb-6 p-6 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg border border-purple-200">
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-800 mb-2">AI Parsed Question Paper</h3>
+              <div className="flex flex-wrap gap-4 text-sm text-gray-600">
+                <span>📄 {aiParseResult.filename}</span>
+                <span>🔢 {aiParseResult.metadata.total_questions} questions</span>
+                <span>📝 {aiParseResult.metadata.total_marks} marks</span>
+                <span>📖 {aiParseResult.metadata.pages_processed} pages</span>
+              </div>
             </div>
-            <Button 
-              size="sm" 
-              className="bg-blue-600 hover:bg-blue-700"
-              onClick={handleUploadQuestionPaper}
-              disabled={isProcessing}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setShowParsePreview(false);
+                setAiParseResult(null);
+                setParsedQuestions([]);
+              }}
             >
-              {isProcessing ? 'Processing...' : 'Upload File'}
+              <X className="h-4 w-4" />
             </Button>
           </div>
-          
-          {/* Show parsed questions preview for TXT and Markdown files */}
-          {selectedFile && 
-           ['txt', 'md', 'markdown'].includes(selectedFile.name.split('.').pop().toLowerCase()) && 
-           parsedQuestions.length > 0 && (
-            <div className="mt-4">
-              <h4 className="text-sm font-semibold text-gray-700 mb-2">
-                {parsedQuestions.length} Questions Found:
-              </h4>
-              <div className="max-h-60 overflow-y-auto p-3 bg-white rounded border border-blue-100">
-                {/* Group questions by main question ID */}
-                {Array.from(new Set(parsedQuestions.map(q => 
-                  q.mainQuestionId || q.id
-                ))).map(mainId => {
-                  const mainQuestions = parsedQuestions.filter(q => 
-                    (q.mainQuestionId || q.id) === mainId && !q.isAlternativeTo
-                  );
-                  const altQuestions = parsedQuestions.filter(q => 
-                    q.isAlternativeTo === mainId
-                  );
-                  
-                  const totalMarks = mainQuestions.reduce((sum, q) => sum + (q.marks || 0), 0);
-                  
-                  return (
-                    <div key={mainId} className="mb-4 pb-4 border-b border-gray-200 last:border-0">
-                      {/* Main question header */}
-                      <div className="font-medium text-gray-800 mb-2">
-                        <span className="text-blue-700">Q{String(mainId)})</span> 
-                        {mainQuestions[0] && !mainQuestions[0].isSubQuestion && mainQuestions[0].text}
-                        <span className="float-right text-blue-600">[{totalMarks} marks]</span>
+
+          {/* Validation Status */}
+          {aiParseResult.validation && (
+            <div className="mb-4">
+              {aiParseResult.validation.valid ? (
+                <div className="flex items-center text-green-700 bg-green-100 px-3 py-2 rounded-lg">
+                  <span className="mr-2">✅</span>
+                  Parsing successful! All questions validated.
+                </div>
+              ) : (
+                <div className="bg-yellow-100 border border-yellow-300 rounded-lg p-3">
+                  <p className="font-medium text-yellow-800 mb-2">⚠️ Parsing Issues Found:</p>
+                  {aiParseResult.validation.issues.map((issue, idx) => (
+                    <p key={idx} className="text-sm text-yellow-700">• {issue}</p>
+                  ))}
+                  {aiParseResult.validation.warnings.length > 0 && (
+                    <div className="mt-2">
+                      <p className="font-medium text-yellow-700">Warnings:</p>
+                      {aiParseResult.validation.warnings.map((warning, idx) => (
+                        <p key={idx} className="text-sm text-yellow-600">• {warning}</p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Question Paper Title Input */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Question Paper Title
+            </label>
+            <Input
+              value={questionPaperTitle}
+              onChange={(e) => setQuestionPaperTitle(e.target.value)}
+              placeholder="Enter question paper title..."
+              className="w-full"
+            />
+          </div>
+
+          {/* Parsed Questions Preview */}
+          <div className="mb-4">
+            <h4 className="text-sm font-semibold text-gray-700 mb-3">Parsed Questions:</h4>
+            <div className="max-h-80 overflow-y-auto bg-white rounded-lg border border-gray-200 p-4">
+              {aiParseResult.questions.map((question, idx) => (
+                <div key={idx} className="mb-4 pb-4 border-b border-gray-200 last:border-0">
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <div className="font-medium text-gray-800">
+                        <span className="text-purple-700">{question.id}</span>
+                        {question.part && <span className="text-purple-600">{question.part}</span>}
                       </div>
-                      
-                      {/* Sub-questions */}
-                      {mainQuestions.filter(q => q.isSubQuestion).length > 0 && (
-                        <div className="space-y-2 ml-4">
-                          {mainQuestions.filter(q => q.isSubQuestion).map((subQ, idx) => (
-                            <div key={idx} className="text-sm">
-                              <span className="font-medium">{subQ.id.slice(-1)})</span> {subQ.text}
-                              <span className="ml-2 text-blue-600 font-medium">[{subQ.marks} marks]</span>
-                              
-                              {subQ.options.length > 0 && (
-                                <div className="mt-1 ml-4 text-xs text-gray-600">
-                                  Options: {subQ.options.join(' (or) ')}
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      
-                      {/* Alternative questions (OR option) */}
-                      {altQuestions.length > 0 && (
-                        <>
-                          <div className="my-2 text-center text-sm text-gray-500">OR</div>
-                          
-                          <div className="font-medium text-gray-800 mb-2">
-                            <span className="text-blue-700">Q{altQuestions[0].id.split(/[a-z]/i)[0]})</span>
-                            {!altQuestions[0].isSubQuestion && altQuestions[0].text}
-                            <span className="float-right text-blue-600">
-                              [{altQuestions.reduce((sum, q) => sum + (q.marks || 0), 0)} marks]
-                            </span>
-                          </div>
-                          
-                          {/* Alternative sub-questions */}
-                          <div className="space-y-2 ml-4">
-                            {altQuestions.filter(q => q.isSubQuestion).map((subQ, idx) => (
-                              <div key={idx} className="text-sm">
-                                <span className="font-medium">{subQ.id.slice(-1)})</span> {subQ.text}
-                                <span className="ml-2 text-blue-600 font-medium">[{subQ.marks} marks]</span>
-                                
-                                {subQ.options.length > 0 && (
-                                  <div className="mt-1 ml-4 text-xs text-gray-600">
-                                    Options: {subQ.options.join(' (or) ')}
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        </>
+                      <p className="text-sm text-gray-600 mt-1">{question.text}</p>
+                      {question.choice && question.choice !== question.id && (
+                        <p className="text-xs text-blue-600 mt-1">Choice: {question.choice}</p>
                       )}
                     </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-          
-          {/* Show helpful message when no questions found */}
-          {selectedFile && 
-           ['txt', 'md', 'markdown'].includes(selectedFile.name.split('.').pop().toLowerCase()) && 
-           parsedQuestions.length === 0 && (
-            <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <p className="text-sm text-yellow-700 font-medium">
-                No questions detected in this file. The system supports these question formats:
-              </p>
-              <div className="mt-2 text-xs text-yellow-700 space-y-2">
-                <div className="p-2 bg-white rounded border border-yellow-100">
-                  <p className="font-medium">Format 1: Simple numbered questions</p>
-                  <pre className="whitespace-pre-wrap mt-1 text-xs">
-1. What is the capital of France? [5]
-Paris (or) Lyon (or) Nice
-
-2. Explain Newton's Law of Motion. [10]
-  </pre>
+                    <span className="text-sm font-medium text-purple-600 ml-4">
+                      [{question.marks} marks]
+                    </span>
+                  </div>
                 </div>
-                
-                <div className="p-2 bg-white rounded border border-yellow-100">
-                  <p className="font-medium">Format 2: Complex exam format with main questions and sub-questions</p>
-                  <pre className="whitespace-pre-wrap mt-1 text-xs">
-**Q1)**
-a) Define object oriented programming. [4]
-b) What is polymorphism? [5]
-
-or
-
-**Q2)**
-a) Explain encapsulation. [4]
-b) Write a class example. [5]
-  </pre>
-                </div>
-              </div>
+              ))}
             </div>
-          )}
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex gap-3">
+            <Button
+              onClick={handleSaveAiParsedQuestions}
+              disabled={isProcessing || !questionPaperTitle.trim()}
+              className="bg-purple-600 hover:bg-purple-700"
+            >
+              {isProcessing ? 'Saving...' : 'Save Question Paper'}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowParsePreview(false);
+                setAiParseResult(null);
+                setParsedQuestions([]);
+              }}
+            >
+              Cancel
+            </Button>
+          </div>
         </div>
       )}
       
@@ -582,7 +480,7 @@ b) Write a class example. [5]
         <div className="mb-4 sm:mb-0">
           <p className="text-gray-600">Access past examination papers and practice tests.</p>
           <p className="text-gray-600 mt-1">
-            <span className="font-medium">Auto-parsing</span>: Upload .txt or .md files to automatically extract questions and marks.
+            <span className="font-medium">AI Parsing</span>: Upload PDF or image files to automatically extract questions using AI.
           </p>
         </div>
         <div className="relative w-full sm:w-64">
@@ -593,7 +491,7 @@ b) Write a class example. [5]
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
-          <div className="absolute left-3 top-2.5 text-gray-400">
+                      <div className="absolute left-3 top-2.5 text-gray-600 dark:text-gray-400">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
               <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
             </svg>
@@ -607,7 +505,21 @@ b) Write a class example. [5]
         </div>
       ) : error ? (
         <div className="bg-red-50 p-4 rounded-lg text-red-600 mb-6">
-          {error}
+          <div className="flex justify-between items-start">
+            <div className="flex-1">
+              <p className="font-medium mb-2">Connection Error</p>
+              <p className="text-sm">{error}</p>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleRetry}
+              className="ml-4 text-red-600 border-red-300 hover:bg-red-100"
+            >
+              <RefreshCw className="h-4 w-4 mr-1" />
+              Retry
+            </Button>
+          </div>
         </div>
       ) : (
         <div className="bg-white overflow-hidden rounded-lg border border-gray-200">
@@ -715,7 +627,7 @@ b) Write a class example. [5]
                 {viewingPaper.title}
               </h3>
               <button 
-                className="text-gray-400 hover:text-gray-600" 
+                                  className="text-gray-600 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300" 
                 onClick={() => setViewModalOpen(false)}
               >
                 <X size={24} />

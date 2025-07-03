@@ -21,7 +21,7 @@ const NotFound = () => {
             <line x1="16" y1="8" x2="2" y2="22"></line>
             <line x1="17.5" y1="15" x2="9" y2="15"></line>
           </svg>
-          <span className="text-2xl font-bold">EduAI</span>
+                        <span className="text-2xl font-bold">Autograder AI</span>
         </Link>
         
         <div className="relative mb-8">

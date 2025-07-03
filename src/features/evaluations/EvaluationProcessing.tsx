@@ -1,15 +1,19 @@
 import React from 'react';
 
 interface EvaluationProcessingProps {
-  setIsProcessing: (isProcessing: boolean) => void;
-  setShowResults: (showResults: boolean) => void;
+  setIsProcessing?: (isProcessing: boolean) => void;
+  setShowResults?: (showResults: boolean) => void;
   stage?: string;
+  fileName?: string;
+  onCancel?: () => void;
 }
 
 const EvaluationProcessing: React.FC<EvaluationProcessingProps> = ({ 
   setIsProcessing, 
   setShowResults,
-  stage = ''
+  stage = '',
+  fileName,
+  onCancel
 }) => {
   // Define stage-specific messages
   const stageMessages = {

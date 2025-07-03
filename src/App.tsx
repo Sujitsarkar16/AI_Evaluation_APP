@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Layout from "./components/Layout";
 
 // Pages
@@ -20,6 +20,7 @@ import { Analytics } from "./features/analytics";
 import { QuestionPapers } from "./features/questionPapers";
 import { Settings } from "./features/settings";
 import { Notifications } from "./features/notifications";
+import { AccessManagement } from "./features/access";
 
 const queryClient = new QueryClient();
 
@@ -34,6 +35,7 @@ const App = () => (
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<SignUp />} />
         <Route path="/dashboard" element={<Dashboard />}>
+          <Route index element={<Navigate to="/dashboard/analytics" replace />} />
           <Route path="classes" element={<Classes />} />
           <Route path="evaluations" element={<Evaluations />} />
           <Route path="agents" element={<Agents />} />
@@ -41,6 +43,7 @@ const App = () => (
           <Route path="question-papers" element={<QuestionPapers />} />
           <Route path="settings" element={<Settings />} />
           <Route path="notifications" element={<Notifications />} />
+          <Route path="access" element={<AccessManagement />} />
         </Route>
         <Route path="*" element={<NotFound />} />
       </Routes>

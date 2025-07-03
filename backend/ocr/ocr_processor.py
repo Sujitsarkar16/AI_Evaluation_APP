@@ -10,7 +10,15 @@ import time
 from PIL import Image
 import google.generativeai as genai
 from dotenv import load_dotenv
-import fitz  # PyMuPDF
+import json
+import base64
+from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from threading import Lock
+from typing import List, Tuple, Dict
+from pdf2image import convert_from_path
+from tenacity import retry, stop_after_attempt, wait_fixed, RetryError
+from prompts import OCR_PROMPT
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -20,196 +28,202 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 # Configure Gemini API
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-if not GEMINI_API_KEY:
-    raise ValueError("GEMINI_API_KEY environment variable is not set.")
+try:
+    api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise ValueError("No Gemini API key found. Set GOOGLE_API_KEY or GEMINI_API_KEY environment variable.")
+    genai.configure(api_key=api_key)
+    MODEL_NAME = 'gemini-2.5-flash-preview-04-17'
+    model = genai.GenerativeModel(model_name=MODEL_NAME)
+    logger.info(f"Successfully initialized Gemini model: {MODEL_NAME}")
+except Exception as e:
+    logger.error(f"Error configuring Gemini API: {e}")
+    model = None
 
-genai.configure(api_key=GEMINI_API_KEY)
+# Rate limiting
+MAX_QPS = 4
+MAX_RETRIES = 3
+_last_call = 0.0
+_rl_lock = Lock()
 
-generation_config = {
-    "temperature": 0.2,
-    "top_p": 0.95,
-    "top_k": 32,
-    "max_output_tokens": 4096,
-}
+def rate_limited_call(fn, *args, **kwargs):
+    """Rate-limited function calls to respect API limits"""
+    global _last_call
+    with _rl_lock:
+        gap = 1.0 / MAX_QPS
+        wait = (_last_call + gap) - time.time()
+        if wait > 0:
+            time.sleep(wait)
+        _last_call = time.time()
+    return fn(*args, **kwargs)
 
-model = genai.GenerativeModel(
-    model_name="gemini-2.0-flash-thinking-exp-01-21",
-    generation_config=generation_config,
-)
-
-# OCR prompt for Gemini Vision
-OCR_PROMPT = """Extract ALL text EXACTLY as it appears in this image.
-Keep the structure, layout, and alignment. Avoid skipping any content.
-Ensure the final output is clear, coherent, and preserves the original intent.
-Just return the plain text representation of this document as if you were reading it naturally.
-Do not hallucinate.
-If this is an answer sheet or exam, identify questions and answers separately."""
-
-def safe_generate_content(prompt, retries=3, sleep_time=2):
-    """
-    Safely generate content with built-in retry logic.
-    
-    Args:
-        prompt: The prompt to send to Gemini
-        retries: Number of retry attempts
-        sleep_time: Time to wait between retries in seconds
-        
-    Returns:
-        Generated text or None if all attempts fail
-    """
-    for attempt in range(1, retries + 1):
-        try:
-            response = model.generate_content(prompt)
-            if response and response.text:
-                return response.text.strip()
-            else:
-                logger.warning(f"Received empty response on attempt {attempt}. Retrying...")
-        except Exception as e:
-            logger.error(f"Error on attempt {attempt}: {e}")
-
-        if attempt < retries:
-            time.sleep(sleep_time)
-
-    return None
-
-def extract_text_from_image(image_path_or_obj):
-    """
-    Extract text from an image using Gemini Vision API.
-    
-    Args:
-        image_path_or_obj: Path to an image file or PIL Image object
-        
-    Returns:
-        Extracted text as string
-    """
+def pdf_to_images(pdf_path: str) -> List[str]:
+    """Convert PDF to images and return image paths"""
     try:
-        # Handle both PIL Image objects and image paths
-        if isinstance(image_path_or_obj, str):
-            # If image is a file path
-            with open(image_path_or_obj, "rb") as img_file:
-                img_data = img_file.read()
-            image_format = "image/" + image_path_or_obj.split('.')[-1].lower()
-        else:
-            # If image is a PIL Image object
-            img_buffer = io.BytesIO()
-            image_path_or_obj.save(img_buffer, format="PNG")
-            img_data = img_buffer.getvalue()
-            img_buffer.close()
-            image_format = "image/png"
-        
-        prompt = [
-            OCR_PROMPT,
-            {"mime_type": image_format, "data": img_data}
+        # Try to find poppler in common locations
+        poppler_path = None
+        possible_paths = [
+            r"C:\poppler-24.08.0\Library\bin",
+            r"C:\Program Files\poppler\bin",
+            "/usr/bin",
+            "/usr/local/bin"
         ]
-
-        text = safe_generate_content(prompt, retries=3, sleep_time=2)
-
-        if text is None:
-            return "ERROR: Unable to process image after multiple retries."
         
-        return text
-    except Exception as e:
-        logger.error(f"Error extracting text from image: {e}")
-        return f"ERROR: {str(e)}"
-
-def convert_pdf_to_images(pdf_path, dpi=300):
-    """
-    Convert PDF pages to images.
-    
-    Args:
-        pdf_path: Path to the PDF file
-        dpi: DPI for rendering (higher values produce better quality but larger images)
+        for path in possible_paths:
+            if os.path.exists(path):
+                poppler_path = path
+                break
         
-    Returns:
-        List of PIL Image objects
-    """
-    try:
-        doc = fitz.open(pdf_path)
-        images = []
+        images = convert_from_path(
+            pdf_path, 
+            dpi=300, 
+            fmt="png", 
+            poppler_path=poppler_path
+        )
         
-        for page_num in range(len(doc)):
-            page = doc.load_page(page_num)
-            pix = page.get_pixmap(matrix=fitz.Matrix(dpi/72, dpi/72))
-            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-            images.append(img)
+        image_paths = []
+        pdf_name = Path(pdf_path).stem
+        upload_dir = Path(pdf_path).parent
+        
+        for idx, img in enumerate(images, 1):
+            img_path = upload_dir / f"{pdf_name}_page_{idx}.png"
+            img.save(img_path, "PNG")
+            image_paths.append(str(img_path))
             
         logger.info(f"Converted PDF to {len(images)} images")
-        return images
+        return image_paths
+        
     except Exception as e:
         logger.error(f"Error converting PDF to images: {e}")
-        raise Exception(f"PDF conversion failed: {str(e)}")
+        raise
 
-def process_image(image_path):
-    """
-    Process a single image with OCR using Gemini.
-    
-    Args:
-        image_path: Path to the image file
-        
-    Returns:
-        Extracted text as string
-    """
-    start_time = time.time()
-    logger.info(f"Processing image: {image_path}")
-    
-    extracted_text = extract_text_from_image(image_path)
-    
-    end_time = time.time()
-    elapsed_time = round(end_time - start_time, 2)
-    logger.info(f"Processed image in {elapsed_time} seconds")
-    
-    return extracted_text
+def img_to_b64(img_path: str) -> str:
+    """Convert image to base64 string"""
+    with open(img_path, "rb") as f:
+        return base64.b64encode(f.read()).decode()
 
-def process_pdf(pdf_path):
-    """
-    Process a PDF document by converting to images and performing OCR on each page.
+@retry(stop=stop_after_attempt(MAX_RETRIES), wait=wait_fixed(1), reraise=True)
+def ocr_single_image(img_path: str) -> Tuple[str, Dict]:
+    """OCR a single image with retry logic"""
+    if not model:
+        raise Exception("Gemini model not initialized")
     
-    Args:
-        pdf_path: Path to the PDF file
+    try:
+        parts = [
+            {"text": OCR_PROMPT},
+            {
+                "inline_data": {
+                    "mime_type": "image/png",
+                    "data": img_to_b64(img_path),
+                }
+            },
+        ]
         
-    Returns:
-        Extracted text as string
-    """
-    start_time = time.time()
-    logger.info(f"Processing PDF: {pdf_path}")
-    
-    # Convert PDF to images
-    images = convert_pdf_to_images(pdf_path)
-    
-    # Process each image
-    combined_text = ""
-    for i, img in enumerate(images):
-        logger.info(f"Processing page {i+1} of {len(images)}")
-        page_text = extract_text_from_image(img)
-        combined_text += f"\n\n--- Page {i+1} ---\n\n{page_text}"
+        response = rate_limited_call(model.generate_content, parts)
         
-        # Small pause to avoid rate limits
-        if i < len(images) - 1:
-            time.sleep(1)
-    
-    end_time = time.time()
-    elapsed_time = round(end_time - start_time, 2)
-    logger.info(f"Processed {len(images)} PDF pages in {elapsed_time} seconds")
-    
-    return combined_text.strip()
+        # Extract usage statistics
+        usage_stats = {
+            "input_tokens": 0,
+            "output_tokens": 0
+        }
+        
+        try:
+            if hasattr(response, 'usage_metadata') and response.usage_metadata:
+                usage_stats["input_tokens"] = getattr(response.usage_metadata, 'prompt_token_count', 0)
+                usage_stats["output_tokens"] = getattr(response.usage_metadata, 'candidates_token_count', 0)
+        except Exception as e:
+            logger.warning(f"Could not extract usage stats: {e}")
+        
+        return response.text.strip(), usage_stats
+        
+    except Exception as e:
+        logger.warning(f"OCR failed for {img_path}: {e}")
+        raise
 
-def process_file(file_path):
-    """
-    Process a file based on its extension.
-    
-    Args:
-        file_path: Path to the file
+def process_image(image_path: str) -> str:
+    """Process a single image and extract text using Gemini OCR"""
+    try:
+        logger.info(f"Processing image: {image_path}")
+        text, usage = ocr_single_image(image_path)
+        logger.info(f"OCR completed. Input tokens: {usage['input_tokens']}, Output tokens: {usage['output_tokens']}")
+        return text
+    except Exception as e:
+        logger.error(f"Error processing image {image_path}: {e}")
+        raise
+
+def process_pdf(pdf_path: str) -> str:
+    """Process a PDF file by converting to images and OCR each page"""
+    try:
+        logger.info(f"Processing PDF: {pdf_path}")
         
-    Returns:
-        Extracted text as string
+        # Convert PDF to images
+        image_paths = pdf_to_images(pdf_path)
+        
+        if not image_paths:
+            raise Exception("No images extracted from PDF")
+        
+        # Process images with threading for better performance
+        texts_ordered = [None] * len(image_paths)
+        total_input_tokens = 0
+        total_output_tokens = 0
+        
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            # Submit OCR tasks
+            future_to_index = {}
+            for i, img_path in enumerate(image_paths):
+                future = executor.submit(ocr_single_image, img_path)
+                future_to_index[future] = i
+            
+            # Collect results in order
+            for future in as_completed(future_to_index.keys()):
+                index = future_to_index[future]
+                try:
+                    text, usage = future.result()
+                    texts_ordered[index] = text
+                    total_input_tokens += usage["input_tokens"]
+                    total_output_tokens += usage["output_tokens"]
+                    logger.info(f"Completed page {index + 1}/{len(image_paths)}")
+                except Exception as e:
+                    logger.error(f"Failed to process page {index + 1}: {e}")
+                    texts_ordered[index] = f"[Error processing page {index + 1}: {str(e)}]"
+        
+        # Clean up image files
+        for img_path in image_paths:
+            try:
+                os.remove(img_path)
+            except Exception as e:
+                logger.warning(f"Could not remove file {img_path}: {e}")
+        
+        # Combine all pages
+        combined_text = ""
+        for i, text in enumerate(texts_ordered, 1):
+            if text:
+                combined_text += f"## Page {i}\n\n{text}\n\n---\n\n"
+        
+        logger.info(f"PDF OCR completed. Total pages: {len(image_paths)}, "
+                   f"Input tokens: {total_input_tokens}, Output tokens: {total_output_tokens}")
+        
+        return combined_text.strip()
+        
+    except Exception as e:
+        logger.error(f"Error processing PDF {pdf_path}: {e}")
+        raise
+
+def process_document(file_path: str) -> str:
     """
-    # Get file extension
-    ext = file_path.split('.')[-1].lower()
-    
-    if ext in ['pdf']:
-        return process_pdf(file_path)
-    elif ext in ['png', 'jpg', 'jpeg']:
-        return process_image(file_path)
-    else:
-        raise Exception(f"Unsupported file format: {ext}") 
+    Main function to process any document (image or PDF)
+    Returns extracted text
+    """
+    try:
+        file_ext = Path(file_path).suffix.lower()
+        
+        if file_ext == '.pdf':
+            return process_pdf(file_path)
+        elif file_ext in ['.png', '.jpg', '.jpeg', '.tiff', '.bmp']:
+            return process_image(file_path)
+        else:
+            raise ValueError(f"Unsupported file format: {file_ext}")
+            
+    except Exception as e:
+        logger.error(f"Error processing document {file_path}: {e}")
+        raise 

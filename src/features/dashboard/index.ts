@@ -1,9 +1,7 @@
 import Dashboard from './Dashboard';
-import DashboardContent from './DashboardContent';
 
 export {
-  Dashboard,
-  DashboardContent
+  Dashboard
 };
 
 export default Dashboard; 

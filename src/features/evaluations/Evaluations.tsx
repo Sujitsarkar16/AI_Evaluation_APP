@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Brain, Upload, FileText } from 'lucide-react';
+import { Brain, Upload, FileText, Settings } from 'lucide-react';
 import { Button } from '@/components/Button';
 import { Textarea } from '@/components/Textarea';
 import EvaluationProcessing from './EvaluationProcessing';
@@ -20,6 +20,9 @@ const Evaluations = () => {
   const [questionPapers, setQuestionPapers] = useState([]);
   const [selectedQuestionPaper, setSelectedQuestionPaper] = useState(null);
   const [isLoadingPapers, setIsLoadingPapers] = useState(false);
+  const [defaultEvaluationType, setDefaultEvaluationType] = useState('rubric');
+  const [studentName, setStudentName] = useState('');
+  const [useCompletePipeline, setUseCompletePipeline] = useState(true);
   
   // Clear error message when file changes
   useEffect(() => {
@@ -32,13 +35,21 @@ const Evaluations = () => {
   useEffect(() => {
     fetchQuestionPapers();
   }, []);
+
+  // Load default evaluation type from localStorage
+  useEffect(() => {
+    const savedEvaluationType = localStorage.getItem('defaultEvaluationType');
+    if (savedEvaluationType) {
+      setDefaultEvaluationType(savedEvaluationType);
+    }
+  }, []);
   
   // Check localStorage for selected question paper ID on component mount
   useEffect(() => {
     const selectedPaperId = localStorage.getItem('selectedQuestionPaperId');
     if (selectedPaperId) {
       // Look for the paper in the fetched question papers
-      const paper = questionPapers.find(p => p._id === selectedPaperId);
+      const paper = (Array.isArray(questionPapers) ? questionPapers : []).find(p => p._id === selectedPaperId);
       if (paper) {
         setSelectedQuestionPaper(paper);
       }
@@ -51,9 +62,16 @@ const Evaluations = () => {
     try {
       setIsLoadingPapers(true);
       const response = await axios.get(`${API_BASE_URL}/question-papers`);
-      setQuestionPapers(response.data);
+      
+      // Extract question_papers array from the response
+      if (response.data && response.data.success && Array.isArray(response.data.question_papers)) {
+        setQuestionPapers(response.data.question_papers);
+      } else {
+        setQuestionPapers([]);
+      }
     } catch (err) {
       console.error('Error fetching question papers:', err);
+      setQuestionPapers([]); // Set empty array on error
     } finally {
       setIsLoadingPapers(false);
     }
@@ -62,9 +80,16 @@ const Evaluations = () => {
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
-      // Check file size (max 10MB)
-      if (file.size > 10 * 1024 * 1024) {
-        setErrorMessage('File size exceeds 10MB limit');
+      // Check file size (max 16MB to match backend limit)
+      if (file.size > 16 * 1024 * 1024) {
+        setErrorMessage('File size exceeds 16MB limit');
+        return;
+      }
+      
+      // Check file type
+      const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg'];
+      if (!allowedTypes.includes(file.type)) {
+        setErrorMessage('Only PDF and image files (PNG, JPEG) are allowed');
         return;
       }
       
@@ -81,273 +106,383 @@ const Evaluations = () => {
       return;
     }
     
-    const paper = questionPapers.find(p => p._id === paperId);
+    const paper = (Array.isArray(questionPapers) ? questionPapers : []).find(p => p._id === paperId);
     setSelectedQuestionPaper(paper);
   };
 
-  const handleAgenticEvaluation = async () => {
-    if (!selectedFile && !selectedQuestionPaper) {
-      setErrorMessage('Please upload a file or select a question paper');
+  const handleEvaluation = async () => {
+    if (!selectedFile) {
+      setErrorMessage('Please upload a student answer sheet');
       return;
     }
     
     setIsProcessing(true);
+    setProcessingStage('starting');
     
     try {
-      let qaData = null;
-      
-      // If question paper is selected, use its questions directly
-      if (selectedQuestionPaper) {
-        setProcessingStage('mapping');
-        
-        if (!selectedQuestionPaper.questions || selectedQuestionPaper.questions.length === 0) {
-          throw new Error('Selected question paper has no questions');
-        }
-        
-        // Process the student answer from uploaded file if both are provided
-        if (selectedFile) {
-          setProcessingStage('ocr');
-          // Step 1: Process document with OCR to get student answers
-          const formData = new FormData();
-          formData.append('file', selectedFile);
-          
-          const ocrResponse = await axios.post(`${API_BASE_URL}/ocr`, formData, {
-            headers: {
-              'Content-Type': 'multipart/form-data'
-            }
-          });
-          
-          if (!ocrResponse.data.text) {
-            throw new Error('OCR processing failed: No text extracted');
-          }
-          
-          // Step 2: Map questions from paper to answers from OCR
-          setProcessingStage('mapping');
-          const mappingResponse = await axios.post(`${API_BASE_URL}/mapping`, {
-            text: ocrResponse.data.text,
-            questions: selectedQuestionPaper.questions
-          });
-          
-          qaData = mappingResponse.data.qa_pairs;
-        } else {
-          // For demonstration, create empty answers if no file is uploaded
-          // This allows viewing model question papers without student answers
-          qaData = selectedQuestionPaper.questions.map(q => ({
-            question: q.text,
-            questionNumber: q.id,
-            answer: '[No student answer provided]',
-            maxMarks: q.marks || 0
-          }));
-        }
+      if (useCompletePipeline) {
+        // Use the complete pipeline endpoint
+        await handleCompletePipeline();
       } else {
-        // Original flow when only file is provided (no question paper)
-        setProcessingStage('ocr');
-        // Step 1: Process document with OCR
-        const formData = new FormData();
-        formData.append('file', selectedFile);
-        
-        const ocrResponse = await axios.post(`${API_BASE_URL}/ocr`, formData, {
-          headers: {
-            'Content-Type': 'multipart/form-data'
-          }
-        });
-        
-        if (!ocrResponse.data.text) {
-          throw new Error('OCR processing failed: No text extracted');
-        }
-        
-        // Step 2: Map questions to answers
-        setProcessingStage('mapping');
-        const mappingResponse = await axios.post(`${API_BASE_URL}/mapping`, {
-          text: ocrResponse.data.text
-        });
-        
-        if (!mappingResponse.data.qa_pairs || mappingResponse.data.qa_pairs.length === 0) {
-          throw new Error('Mapping failed: No Q&A pairs identified');
-        }
-        
-        qaData = mappingResponse.data.qa_pairs;
+        // Use the step-by-step approach
+        await handleStepByStepEvaluation();
       }
-      
-      if (!qaData || qaData.length === 0) {
-        throw new Error('No question-answer pairs to evaluate');
-      }
-      
-      // Step 3: Evaluate the Q&A pairs
-      setProcessingStage('evaluation');
-      const evaluationResponse = await axios.post(`${API_BASE_URL}/evaluate`, {
-        qa_pairs: qaData,
-        totalMarks: selectedQuestionPaper?.totalMarks || 100
-      });
-      
-      // Store the evaluation report
-      setEvaluationData({
-        report: evaluationResponse.data.evaluation_report,
-        format: evaluationResponse.data.format || 'markdown',
-        fileName: fileName || (selectedQuestionPaper ? selectedQuestionPaper.title : 'Evaluation'),
-        timestamp: new Date().toISOString(),
-        questionPaper: selectedQuestionPaper
-      });
-      
-      // Complete processing
-      setIsProcessing(false);
-      setShowResults(true);
     } catch (error) {
-      console.error('Evaluation process error:', error);
-      setErrorMessage(`Evaluation failed: ${error.response?.data?.error || error.message}`);
+      console.error('Evaluation error:', error);
+      setErrorMessage(error.response?.data?.error || error.message || 'Evaluation failed');
       setIsProcessing(false);
     }
   };
 
-  const handleReset = () => {
-    setShowResults(false);
-    setSelectedFile(null);
-    setFileName('');
-    setSelectedQuestionPaper(null);
-    setAdditionalComments('');
-    setErrorMessage('');
-    setEvaluationData(null);
+  const handleCompletePipeline = async () => {
+    setProcessingStage('processing');
+    
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+    formData.append('studentName', studentName || 'Anonymous');
+    formData.append('evaluationType', defaultEvaluationType);
+    
+    if (selectedQuestionPaper) {
+      formData.append('questionPaperId', selectedQuestionPaper._id);
+    }
+    
+    const response = await axios.post(`${API_BASE_URL}/process-complete`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      },
+      timeout: 300000 // 5 minutes timeout for complete pipeline
+    });
+    
+    if (response.data.success) {
+      setEvaluationData({
+        evaluationId: response.data.evaluationId,
+        result: response.data.result,
+        ocrText: response.data.ocrText,
+        questions: response.data.questions,
+        stats: response.data.stats,
+        fileName: fileName,
+        studentName: studentName || 'Anonymous',
+        timestamp: new Date().toISOString(),
+        questionPaper: selectedQuestionPaper,
+        evaluationType: defaultEvaluationType
+      });
+      
+      setShowResults(true);
+      setIsProcessing(false);
+    } else {
+      throw new Error('Pipeline processing failed');
+    }
   };
 
+  const handleStepByStepEvaluation = async () => {
+    let qaData = null;
+    
+    // Step 1: OCR Processing
+    setProcessingStage('ocr');
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+    
+    const ocrResponse = await axios.post(`${API_BASE_URL}/ocr`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+    
+    if (!ocrResponse.data.success || !ocrResponse.data.text) {
+      throw new Error('OCR processing failed: No text extracted');
+    }
+    
+    // Step 2: Q&A Mapping
+    setProcessingStage('mapping');
+    const mappingResponse = await axios.post(`${API_BASE_URL}/mapping`, {
+      text: ocrResponse.data.text,
+      questionPaperId: selectedQuestionPaper?._id
+    });
+    
+    if (!mappingResponse.data.success || !mappingResponse.data.questions || mappingResponse.data.questions.length === 0) {
+      throw new Error('Mapping failed: No Q&A pairs identified');
+    }
+    
+    qaData = mappingResponse.data.questions;
+    
+    // Step 3: Evaluation
+    setProcessingStage('evaluation');
+    const evaluationResponse = await axios.post(`${API_BASE_URL}/evaluate`, {
+      questions: qaData,
+      evaluationType: defaultEvaluationType,
+      studentName: studentName || 'Anonymous'
+    });
+    
+    if (!evaluationResponse.data.success) {
+      throw new Error('Evaluation failed');
+    }
+    
+    // Store the evaluation results
+    setEvaluationData({
+      evaluationId: evaluationResponse.data.evaluationId,
+      result: evaluationResponse.data.result,
+      ocrText: ocrResponse.data.text,
+      questions: qaData,
+      stats: {
+        mapping: mappingResponse.data.stats,
+        evaluation: evaluationResponse.data.stats
+      },
+      fileName: fileName,
+      studentName: studentName || 'Anonymous',
+      timestamp: new Date().toISOString(),
+      questionPaper: selectedQuestionPaper,
+      evaluationType: defaultEvaluationType
+    });
+    
+    setShowResults(true);
+    setIsProcessing(false);
+  };
+
+  const handleReset = () => {
+    setSelectedFile(null);
+    setFileName('');
+    setShowResults(false);
+    setEvaluationData(null);
+    setErrorMessage('');
+    setAdditionalComments('');
+    setProcessingStage('');
+    setStudentName('');
+  };
+
+  const getEvaluationTypeDescription = (type) => {
+    switch (type) {
+      case 'rubric':
+        return 'Structured rubric-based evaluation with clear scoring criteria and detailed feedback';
+      default:
+        return 'Rubric-based evaluation';
+    }
+  };
+
+  if (showResults && evaluationData) {
+    return (
+      <EvaluationResults 
+        fileName={fileName}
+        evaluationData={evaluationData}
+        onBack={() => setShowResults(false)}
+        onReset={handleReset}
+      />
+    );
+  }
+
+  if (isProcessing) {
+    return (
+      <EvaluationProcessing 
+        stage={processingStage}
+        fileName={fileName}
+        onCancel={() => {
+          setIsProcessing(false);
+          setProcessingStage('');
+        }}
+      />
+    );
+  }
+
   return (
-    <div className="bg-white rounded-xl shadow-sm p-6">
-      {!showResults ? (
-        <>
-          <h2 className="text-2xl font-semibold text-gray-800 mb-6">Evaluations</h2>
-          
-          <div className="max-w-2xl mx-auto">
-            <div className="bg-blue-50 rounded-lg p-4 mb-6 border-l-4 border-blue-500">
-              <h3 className="font-medium text-blue-800 mb-1">Submit your work for evaluation</h3>
-              <p className="text-blue-600 text-sm">Upload your document and our AI agents will analyze and provide detailed feedback.</p>
-            </div>
-            
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Select Question Paper (Optional)</label>
-              <div className="relative">
-                <select 
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm py-2 px-3"
-                  onChange={handleQuestionPaperSelect}
-                  value={selectedQuestionPaper?._id || ""}
-                  disabled={isLoadingPapers}
-                >
-                  <option value="">-- Select a question paper --</option>
-                  {questionPapers.map(paper => (
-                    <option key={paper._id} value={paper._id}>
-                      {paper.title} ({paper.questions?.length || 0} questions)
-                    </option>
-                  ))}
-                </select>
-                {selectedQuestionPaper && (
-                  <div className="mt-2 p-3 bg-blue-50 rounded-lg border border-blue-100">
-                    <div className="flex items-center text-sm font-medium text-blue-800">
-                      <FileText className="h-4 w-4 mr-2" />
-                      {selectedQuestionPaper.title}
-                    </div>
-                    <p className="text-xs text-blue-600 mt-1">
-                      {selectedQuestionPaper.questions?.length || 0} questions with a total of {
-                        selectedQuestionPaper.questions?.reduce((sum, q) => sum + (q.marks || 0), 0) || 0
-                      } marks
-                    </p>
-                  </div>
-                )}
-                {isLoadingPapers && (
-                  <div className="absolute right-2 top-2">
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
-                  </div>
-                )}
-              </div>
-              <p className="text-xs text-gray-500 mt-1">
-                Select a question paper to use its questions for evaluation. 
-                If you also upload an answer document, it will be mapped to the selected questions.
-                If no file is uploaded, you will see the questions without student answers.
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-4xl mx-auto py-8 px-4">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <div className="flex items-center justify-center mb-4">
+            <Brain className="h-12 w-12 text-blue-600 mr-3" />
+            <h1 className="text-3xl font-bold text-gray-900">AI-Powered Evaluation</h1>
+          </div>
+          <p className="text-gray-600 max-w-2xl mx-auto">
+            Upload student answer sheets and get comprehensive AI evaluations using advanced OCR, 
+            intelligent Q&A mapping, and multi-criteria assessment.
+          </p>
+        </div>
+
+        {/* Current Evaluation Type Display */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-semibold text-blue-900 capitalize">
+                Current Evaluation Type: {defaultEvaluationType}
+              </h3>
+              <p className="text-blue-700 text-sm mt-1">
+                {getEvaluationTypeDescription(defaultEvaluationType)}
               </p>
             </div>
-            
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Upload Document {selectedQuestionPaper ? '(Optional with Question Paper)' : ''}</label>
-              <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-lg">
-                <div className="space-y-1 text-center">
-                  <svg className="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true">
-                    <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                  <div className="flex justify-center text-sm text-gray-600">
-                    <label htmlFor="file-upload" className="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none">
-                      <span>Upload a file</span>
-                      <input 
-                        id="file-upload" 
-                        name="file-upload" 
-                        type="file" 
-                        className="sr-only" 
-                        onChange={handleFileChange}
-                        accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.txt"
-                      />
-                    </label>
-                    <p className="pl-1">or drag and drop</p>
-                  </div>
-                  <p className="text-xs text-gray-500">
-                    PDF, DOC, DOCX, JPG, PNG, TXT up to 10MB
-                  </p>
-                  {fileName && (
-                    <p className="text-sm text-blue-600 font-medium mt-2">
-                      Selected: {fileName}
-                    </p>
-                  )}
-                </div>
-              </div>
-              {errorMessage && (
-                <p className="mt-2 text-sm text-red-600">
-                  {errorMessage}
-                </p>
-              )}
-            </div>
-            
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Additional Comments</label>
-              <Textarea 
-                className="w-full h-24" 
-                placeholder="Add any additional information about your submission..."
-                value={additionalComments}
-                onChange={(e) => setAdditionalComments(e.target.value)}
+            <a 
+              href="/settings" 
+              className="flex items-center text-blue-600 hover:text-blue-800 transition-colors"
+            >
+              <Settings className="h-4 w-4 mr-1" />
+              Change
+            </a>
+          </div>
+        </div>
+
+        {/* Main Form */}
+        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+          {/* Student Name Input */}
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Student Name (Optional)
+            </label>
+            <input
+              type="text"
+              value={studentName}
+              onChange={(e) => setStudentName(e.target.value)}
+              placeholder="Enter student name..."
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          {/* Question Paper Selection */}
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Question Paper (Optional)
+            </label>
+            <select 
+              value={selectedQuestionPaper?._id || ''}
+              onChange={handleQuestionPaperSelect}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              disabled={isLoadingPapers}
+            >
+              <option value="">No question paper (auto-detect questions)</option>
+              {(Array.isArray(questionPapers) ? questionPapers : []).map((paper) => (
+                <option key={paper._id} value={paper._id}>
+                  {paper.title} ({paper.questions?.length || 0} questions)
+                </option>
+              ))}
+            </select>
+            {selectedQuestionPaper && (
+              <p className="text-sm text-gray-600 mt-1">
+                Selected: {selectedQuestionPaper.title} - {selectedQuestionPaper.questions?.length || 0} questions
+              </p>
+            )}
+          </div>
+
+          {/* File Upload */}
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Upload Student Answer Sheet *
+            </label>
+            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors">
+              <input
+                type="file"
+                onChange={handleFileChange}
+                accept=".pdf,.png,.jpg,.jpeg"
+                className="hidden"
+                id="file-upload"
               />
+              <label htmlFor="file-upload" className="cursor-pointer">
+                <Upload className="mx-auto h-12 w-12 text-gray-600 dark:text-gray-400 mb-4" />
+                <p className="text-sm text-gray-600">
+                  Click to upload or drag and drop
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  PDF, PNG, JPEG up to 16MB
+                </p>
+              </label>
             </div>
-            
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Button 
-                variant="outline" 
-                className="flex-1 flex items-center justify-center"
-                onClick={handleAgenticEvaluation}
-                disabled={!selectedFile && !selectedQuestionPaper}
-              >
-                <Upload className="mr-2 h-4 w-4" />
-                Standard Evaluation
-              </Button>
-              
-              <Button 
-                className="flex-1 flex items-center justify-center bg-blue-600 hover:bg-blue-700"
-                onClick={handleAgenticEvaluation}
-                disabled={!selectedFile && !selectedQuestionPaper}
-              >
-                <Brain className="mr-2 h-4 w-4" />
-                Agentic Evaluation
-              </Button>
+            {fileName && (
+              <p className="mt-2 text-sm text-gray-600">
+                Selected: {fileName}
+              </p>
+            )}
+          </div>
+
+          {/* Processing Options */}
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Processing Mode
+            </label>
+            <div className="space-y-2">
+              <label className="flex items-center">
+                <input
+                  type="radio"
+                  name="processing-mode"
+                  checked={useCompletePipeline}
+                  onChange={() => setUseCompletePipeline(true)}
+                  className="mr-2"
+                />
+                <span className="text-sm">Complete Pipeline (Recommended) - Faster, single-step processing</span>
+              </label>
+              <label className="flex items-center">
+                <input
+                  type="radio"
+                  name="processing-mode"
+                  checked={!useCompletePipeline}
+                  onChange={() => setUseCompletePipeline(false)}
+                  className="mr-2"
+                />
+                <span className="text-sm">Step-by-step Processing - Detailed progress tracking</span>
+              </label>
             </div>
           </div>
-        </>
-      ) : (
-        <EvaluationResults 
-          fileName={fileName} 
-          evaluationData={evaluationData}
-          onReset={handleReset}
-        />
-      )}
 
-      {isProcessing && (
-        <EvaluationProcessing 
-          setIsProcessing={setIsProcessing} 
-          setShowResults={setShowResults}
-          stage={processingStage}
-        />
-      )}
+          {/* Additional Comments */}
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Additional Comments (Optional)
+            </label>
+            <Textarea
+              value={additionalComments}
+              onChange={(e) => setAdditionalComments(e.target.value)}
+              placeholder="Any specific instructions or context for the evaluation..."
+              rows={3}
+            />
+          </div>
+
+          {/* Error Message */}
+          {errorMessage && (
+            <div className="bg-red-50 border border-red-200 rounded-md p-3 mb-4">
+              <p className="text-red-800 text-sm">{errorMessage}</p>
+            </div>
+          )}
+
+          {/* Submit Button */}
+          <Button
+            onClick={handleEvaluation}
+            disabled={!selectedFile || isProcessing}
+            className="w-full"
+          >
+            <Brain className="h-4 w-4 mr-2" />
+            Submit for Evaluation
+          </Button>
+        </div>
+
+        {/* Pipeline Information */}
+        <div className="bg-gray-50 rounded-lg p-6">
+          <h3 className="font-semibold text-gray-900 mb-3">Evaluation Pipeline</h3>
+          <div className="grid md:grid-cols-3 gap-4">
+            <div className="text-center">
+              <div className="bg-blue-100 rounded-full p-3 w-12 h-12 mx-auto mb-2 flex items-center justify-center">
+                <FileText className="h-6 w-6 text-blue-600" />
+              </div>
+              <h4 className="font-medium text-gray-900">1. OCR Processing</h4>
+              <p className="text-sm text-gray-600">
+                Extract text from handwritten answer sheets using advanced AI
+              </p>
+            </div>
+            <div className="text-center">
+              <div className="bg-green-100 rounded-full p-3 w-12 h-12 mx-auto mb-2 flex items-center justify-center">
+                <Brain className="h-6 w-6 text-green-600" />
+              </div>
+              <h4 className="font-medium text-gray-900">2. Q&A Mapping</h4>
+              <p className="text-sm text-gray-600">
+                Intelligently map questions to answers with semantic understanding
+              </p>
+            </div>
+            <div className="text-center">
+              <div className="bg-purple-100 rounded-full p-3 w-12 h-12 mx-auto mb-2 flex items-center justify-center">
+                <Upload className="h-6 w-6 text-purple-600" />
+              </div>
+              <h4 className="font-medium text-gray-900">3. AI Evaluation</h4>
+              <p className="text-sm text-gray-600">
+                Comprehensive assessment with detailed feedback and scoring
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
